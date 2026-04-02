@@ -1,0 +1,197 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// Enums
+enum UserRole {
+  user
+  mentored
+  advanced
+  admin
+}
+
+enum AccessLevel {
+  public
+  mentored
+  advanced
+  vip
+}
+
+enum SignalType {
+  buy
+  sell
+  hold
+  alert
+}
+
+enum AlertType {
+  info
+  warning
+  urgent
+  signal
+}
+
+enum ModerationAction {
+  warning
+  message_sent
+  blocked_30_days
+  permanent_ban
+}
+
+enum ContentStatus {
+  active
+  deleted
+  suspended
+}
+
+// Models
+model User {
+  id              String    @id @default(uuid())
+  email           String    @unique
+  fullName        String    @map("full_name")
+  passwordHash    String?   @map("password_hash")
+  role            UserRole  @default(user)
+  vipAccess       Boolean   @default(false) @map("vip_access")
+  bio             String?
+  phone           String?
+  avatarUrl       String?   @map("avatar_url")
+  violationCount  Int       @default(0) @map("violation_count")
+  isBlocked       Boolean   @default(false) @map("is_blocked")
+  blockedUntil    DateTime? @map("blocked_until")
+  createdAt       DateTime  @default(now()) @map("created_at")
+  updatedAt       DateTime  @updatedAt @map("updated_at")
+
+  // Relations
+  posts           Post[]
+  comments        Comment[]
+  likes           Like[]
+  moderationLogs  ModerationLog[]
+  sessions        Session[]
+
+  @@map("users")
+}
+
+model Post {
+  id              String       @id @default(uuid())
+  content         String?
+  imageUrl        String?      @map("image_url")
+  authorEmail     String       @map("author_email")
+  authorName      String       @map("author_name")
+  authorAvatar    String?      @map("author_avatar")
+  accessLevel     AccessLevel  @default(public) @map("access_level")
+  status          ContentStatus @default(active)
+  isSignal        Boolean      @default(false) @map("is_signal")
+  signalType      SignalType?  @map("signal_type")
+  isPinned        Boolean      @default(false) @map("is_pinned")
+  likesCount      Int          @default(0) @map("likes_count")
+  commentsCount   Int          @default(0) @map("comments_count")
+  createdAt       DateTime     @default(now()) @map("created_at")
+  updatedAt       DateTime     @updatedAt @map("updated_at")
+
+  // Relations
+  author          User         @relation(fields: [authorEmail], references: [email], onDelete: Cascade)
+  comments        Comment[]
+  likes           Like[]
+
+  @@index([accessLevel, status])
+  @@index([authorEmail])
+  @@index([createdAt])
+  @@index([isPinned])
+  @@index([isSignal])
+  @@map("posts")
+}
+
+model Comment {
+  id                String        @id @default(uuid())
+  postId            String        @map("post_id")
+  parentCommentId   String?       @map("parent_comment_id")
+  authorEmail       String        @map("author_email")
+  authorName        String        @map("author_name")
+  authorAvatar      String?       @map("author_avatar")
+  content           String
+  status            ContentStatus @default(active)
+  createdAt         DateTime      @default(now()) @map("created_at")
+  updatedAt         DateTime      @updatedAt @map("updated_at")
+
+  // Relations
+  post              Post          @relation(fields: [postId], references: [id], onDelete: Cascade)
+  parent            Comment?      @relation("CommentReplies", fields: [parentCommentId], references: [id], onDelete: Cascade)
+  replies           Comment[]     @relation("CommentReplies")
+  author            User          @relation(fields: [authorEmail], references: [email], onDelete: Cascade)
+
+  @@index([postId, status])
+  @@index([parentCommentId])
+  @@index([authorEmail])
+  @@map("comments")
+}
+
+model Like {
+  id          String    @id @default(uuid())
+  postId      String    @map("post_id")
+  userEmail   String    @map("user_email")
+  createdAt   DateTime  @default(now()) @map("created_at")
+
+  // Relations
+  post        Post      @relation(fields: [postId], references: [id], onDelete: Cascade)
+  user        User      @relation(fields: [userEmail], references: [email], onDelete: Cascade)
+
+  @@unique([postId, userEmail])
+  @@index([userEmail])
+  @@index([postId])
+  @@map("likes")
+}
+
+model Alert {
+  id              String      @id @default(uuid())
+  title           String
+  message         String
+  type            AlertType   @default(info)
+  targetLevel     AccessLevel @default(public) @map("target_level")
+  targetEmail     String?     @map("target_email")
+  isRead          Boolean     @default(false) @map("is_read")
+  createdAt       DateTime    @default(now()) @map("created_at")
+
+  @@index([targetLevel])
+  @@index([targetEmail])
+  @@index([createdAt])
+  @@map("alerts")
+}
+
+model ModerationLog {
+  id              String           @id @default(uuid())
+  userEmail       String           @map("user_email")
+  userName        String           @map("user_name")
+  violationType   String           @map("violation_type")
+  contentBlocked  String?          @map("content_blocked")
+  actionTaken     ModerationAction @map("action_taken")
+  attemptNumber   Int              @map("attempt_number")
+  context         String
+  createdAt       DateTime         @default(now()) @map("created_at")
+
+  // Relations
+  user            User             @relation(fields: [userEmail], references: [email], onDelete: Cascade)
+
+  @@index([userEmail])
+  @@index([createdAt])
+  @@map("moderation_logs")
+}
+
+model Session {
+  id          String    @id @default(uuid())
+  userId      String    @map("user_id")
+  token       String    @unique
+  expiresAt   DateTime  @map("expires_at")
+  createdAt   DateTime  @default(now()) @map("created_at")
+
+  // Relations
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([token])
+  @@index([userId])
+  @@map("sessions")
+}

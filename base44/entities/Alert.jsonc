@@ -1,0 +1,44 @@
+{
+  "name": "Alert",
+  "type": "object",
+  "properties": {
+    "title": {
+      "type": "string"
+    },
+    "message": {
+      "type": "string"
+    },
+    "type": {
+      "type": "string",
+      "enum": [
+        "info",
+        "warning",
+        "urgent",
+        "signal"
+      ],
+      "default": "info"
+    },
+    "target_level": {
+      "type": "string",
+      "enum": [
+        "all",
+        "mentored",
+        "advanced",
+        "vip"
+      ],
+      "default": "all"
+    },
+    "target_email": {
+      "type": "string",
+      "description": "Specific user email or empty for broadcast"
+    },
+    "is_read": {
+      "type": "boolean",
+      "default": false
+    }
+  },
+  "required": [
+    "title",
+    "message"
+  ]
+}

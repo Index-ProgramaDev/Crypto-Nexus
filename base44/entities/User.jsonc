@@ -1,0 +1,49 @@
+{
+  "name": "User",
+  "type": "object",
+  "properties": {
+    "role": {
+      "type": "string",
+      "enum": [
+        "user",
+        "mentored",
+        "advanced",
+        "admin"
+      ],
+      "default": "user"
+    },
+    "phone": {
+      "type": "string"
+    },
+    "bio": {
+      "type": "string"
+    },
+    "avatar_url": {
+      "type": "string"
+    },
+    "vip_access": {
+      "type": "boolean",
+      "default": false
+    },
+    "is_blocked": {
+      "type": "boolean",
+      "default": false
+    },
+    "blocked_until": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "violation_count": {
+      "type": "number",
+      "default": 0
+    },
+    "accepted_terms": {
+      "type": "boolean",
+      "default": false
+    },
+    "accepted_terms_date": {
+      "type": "string",
+      "format": "date-time"
+    }
+  }
+}

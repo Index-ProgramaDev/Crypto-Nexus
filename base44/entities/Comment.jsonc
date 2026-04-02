@@ -1,0 +1,40 @@
+{
+  "name": "Comment",
+  "type": "object",
+  "properties": {
+    "post_id": {
+      "type": "string",
+      "description": "ID of the parent post"
+    },
+    "parent_comment_id": {
+      "type": "string",
+      "description": "ID of parent comment for threads"
+    },
+    "content": {
+      "type": "string"
+    },
+    "author_name": {
+      "type": "string"
+    },
+    "author_email": {
+      "type": "string"
+    },
+    "author_avatar": {
+      "type": "string"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "active",
+        "blocked",
+        "deleted"
+      ],
+      "default": "active"
+    }
+  },
+  "required": [
+    "post_id",
+    "content",
+    "author_email"
+  ]
+}
