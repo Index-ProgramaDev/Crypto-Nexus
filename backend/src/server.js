@@ -131,6 +131,9 @@ process.on('unhandledRejection', (reason, promise) => {
   process.exit(1);
 });
 
-startServer();
+// Start server only if not in serverless environment (Vercel)
+if (process.env.VERCEL !== '1') {
+  startServer();
+}
 
 export default app;
