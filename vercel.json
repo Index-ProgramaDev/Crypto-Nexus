@@ -1,0 +1,43 @@
+{
+  "version": 2,
+  "root": true,
+  "builds": [
+    {
+      "src": "package.json",
+      "use": "@vercel/static-build",
+      "config": {
+        "distDir": "dist"
+      }
+    },
+    {
+      "src": "backend/package.json",
+      "use": "@vercel/node",
+      "config": {
+        "includeFiles": [
+          "backend/src/**",
+          "backend/prisma/**",
+          "backend/package.json"
+        ]
+      }
+    }
+  ],
+  "routes": [
+    {
+      "src": "/api/(.*)",
+      "dest": "/backend/$1"
+    },
+    {
+      "src": "/(.*)",
+      "dest": "/dist/$1"
+    }
+  ],
+  "env": {
+    "NODE_ENV": "production",
+    "VERCEL": "1"
+  },
+  "functions": {
+    "backend/src/server.js": {
+      "maxDuration": 30
+    }
+  }
+}

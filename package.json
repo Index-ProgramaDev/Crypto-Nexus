@@ -6,6 +6,10 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
+    "build:backend": "cd backend && npm run build",
+    "build:all": "npm run build && npm run build:backend",
+    "start": "vite preview",
+    "start:backend": "cd backend && npm start",
     "lint": "eslint . --quiet",
     "lint:fix": "eslint . --fix",
     "typecheck": "tsc -p ./jsconfig.json",

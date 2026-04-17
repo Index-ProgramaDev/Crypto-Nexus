@@ -2,11 +2,6 @@ import { PrismaClient } from '@prisma/client';
 import { config } from './index.js';
 import { logger } from './logger.js';
 
-// ============================================================================
-// PRODUCTION-GRADE DATABASE CONFIGURATION
-// ============================================================================
-
-// PrismaClient singleton - prevents multiple instances in development
 let prisma;
 
 if (!globalThis.__prisma) {
@@ -14,7 +9,6 @@ if (!globalThis.__prisma) {
     log: config.nodeEnv === 'development' 
       ? ['query', 'info', 'warn', 'error'] 
       : ['error'],
-    // Neon-specific: optimize connection pooling for serverless
     datasources: {
       db: {
         url: process.env.DATABASE_URL,
@@ -25,14 +19,6 @@ if (!globalThis.__prisma) {
 
 prisma = globalThis.__prisma;
 
-// ============================================================================
-// DATABASE HEALTH CHECK
-// ============================================================================
-
-/**
- * Perform a lightweight health check query
- * Uses SELECT 1 for minimal overhead
- */
 export async function checkDatabaseHealth() {
   try {
     await prisma.$queryRaw`SELECT 1`;
@@ -46,40 +32,24 @@ export async function checkDatabaseHealth() {
   }
 }
 
-// ============================================================================
-// CONNECTION WITH RETRY LOGIC
-// ============================================================================
-
 const MAX_RETRIES = 5;
 const INITIAL_RETRY_DELAY_MS = 1000;
 const MAX_RETRY_DELAY_MS = 30000;
-
-/**
- * Exponential backoff delay calculation
- */
 function getRetryDelay(attempt) {
   const delay = Math.min(
     INITIAL_RETRY_DELAY_MS * Math.pow(2, attempt),
     MAX_RETRY_DELAY_MS
   );
-  // Add jitter to prevent thundering herd
   return delay + Math.random() * 1000;
 }
 
-/**
- * Sleep utility for retry delays
- */
 function sleep(ms) {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
 
-/**
- * Classify database errors for appropriate handling
- */
 function classifyError(error) {
   const errorCode = error.code || error.message;
   
-  // Connection errors
   if (errorCode?.includes('P1001')) {
     return { 
       type: 'CONNECTION_REFUSED', 
