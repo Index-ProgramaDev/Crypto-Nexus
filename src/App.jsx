@@ -5,6 +5,7 @@ import { BrowserRouter as Router, Route, Routes, Navigate } from 'react-router-d
 import PageNotFound from './lib/PageNotFound';
 import { AuthProvider, useAuth } from '@/lib/AuthContext';
 import UserNotRegisteredError from '@/components/UserNotRegisteredError';
+import BlockedAccount from '@/components/auth/BlockedAccount';
 
 import AppLayout from '@/components/layout/AppLayout';
 import Feed from '@/pages/Feed';
@@ -21,7 +22,7 @@ import { useQuery } from '@tanstack/react-query';
 import { api } from '@/api/apiClient';
 
 const AuthenticatedApp = () => {
-  const { isLoadingAuth, isAuthenticated, user } = useAuth();
+  const { isLoadingAuth, isAuthenticated, user, isBlocked, blockedInfo } = useAuth();
 
   const { data: unreadAlertsData } = useQuery({
     queryKey: ['unread-alerts-count', user?.email],
@@ -40,6 +41,11 @@ const AuthenticatedApp = () => {
         </div>
       </div>
     );
+  }
+
+  // Show blocked account dialog when user is blocked
+  if (isBlocked) {
+    return <BlockedAccount blockedInfo={blockedInfo} onClose={() => window.location.href = '/login'} />;
   }
 
   if (!isAuthenticated) {

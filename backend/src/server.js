@@ -4,10 +4,18 @@ import helmet from 'helmet';
 import compression from 'compression';
 import morgan from 'morgan';
 import { config } from './config/index.js';
-import { testConnection } from './config/database.js';
+// Import database functions
+import { testConnection, disconnectDatabase, checkDatabaseHealth } from './config/database.js';
 import { logger, logStream } from './config/logger.js';
 import { apiLimiter } from './middleware/rateLimit.js';
 import { errorHandler, notFoundHandler } from './middleware/error.js';
+import { initWebSocket } from './config/socket.js';
+
+console.log('🚀 Starting server...');
+console.log('📍 PORT:', config.port);
+console.log('🔧 NODE_ENV:', config.nodeEnv);
+console.log('🌐 CORS_ORIGIN:', config.corsOrigin);
+console.log('💾 DATABASE_URL set:', process.env.DATABASE_URL ? 'YES' : 'NO');
 
 // Import routes
 import authRoutes from './routes/auth.routes.js';
@@ -16,6 +24,10 @@ import commentRoutes from './routes/comment.routes.js';
 import alertRoutes from './routes/alert.routes.js';
 import userRoutes from './routes/user.routes.js';
 import moderationRoutes from './routes/moderation.routes.js';
+import followRoutes from './routes/follow.routes.js';
+import chatRoutes from './routes/chat.routes.js';
+import uploadRoutes from './routes/upload.routes.js';
+import path from 'path';
 
 const app = express();
 
@@ -26,7 +38,7 @@ app.use(helmet({
       defaultSrc: ["'self'"],
       styleSrc: ["'self'", "'unsafe-inline'"],
       scriptSrc: ["'self'"],
-      imgSrc: ["'self'", "data:", "https:"],
+      imgSrc: ["'self'", "data:", "https:", "blob:"],
       connectSrc: ["'self'"],
       fontSrc: ["'self'"],
       objectSrc: ["'none'"],
@@ -34,7 +46,8 @@ app.use(helmet({
       frameSrc: ["'none'"]
     }
   },
-  crossOriginEmbedderPolicy: false
+  crossOriginEmbedderPolicy: false,
+  crossOriginResourcePolicy: { policy: "cross-origin" }
 }));
 
 // CORS configuration
@@ -75,7 +88,19 @@ app.use(`${apiPrefix}/posts`, postRoutes);
 app.use(`${apiPrefix}/posts/:id/comments`, commentRoutes);
 app.use(`${apiPrefix}/alerts`, alertRoutes);
 app.use(`${apiPrefix}/users`, userRoutes);
+app.use(`${apiPrefix}/users`, followRoutes);
+app.use(`${apiPrefix}/chat`, chatRoutes);
+console.log('✅ Chat routes registered at:', `${apiPrefix}/chat`);
 app.use(`${apiPrefix}/moderation`, moderationRoutes);
+app.use(`${apiPrefix}/upload`, uploadRoutes);
+
+// Static uploads serving with CORS headers
+app.use('/uploads', (req, res, next) => {
+  res.setHeader('Access-Control-Allow-Origin', config.corsOrigin);
+  res.setHeader('Access-Control-Allow-Methods', 'GET, HEAD, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization');
+  next();
+}, express.static(path.join(process.cwd(), 'uploads')));
 
 // 404 handler
 app.use(notFoundHandler);
@@ -85,39 +110,95 @@ app.use(errorHandler);
 
 // Start server
 async function startServer() {
+  let server;
+  let isHealthy = false;
+  
   try {
-    // Test database connection
-    await testConnection();
+    // Test database connection with retry logic
+    const connectionResult = await testConnection();
+    logger.info(`✅ [Server] Database connected after ${connectionResult.attempts} attempt(s)`);
+    isHealthy = true;
     
-    // Start server
-    const server = app.listen(config.port, () => {
-      logger.info(`🚀 Server running on port ${config.port} in ${config.nodeEnv} mode`);
-      logger.info(`📖 API Documentation available at http://localhost:${config.port}${apiPrefix}`);
+  } catch (error) {
+    logger.error('❌ [Server] Database connection failed:', {
+      error: error.message,
+      type: error.type || 'UNKNOWN',
+      timestamp: error.timestamp
+    });
+    
+    // Log critical failure but don't exit immediately in production
+    // This allows for health checks and monitoring to detect the issue
+    if (config.nodeEnv === 'production') {
+      logger.warn('⚠️ [Server] Starting in DEGRADED mode - database unavailable');
+      logger.warn('⚠️ [Server] API endpoints requiring database will return 503 errors');
+    } else {
+      logger.error('❌ [Server] Development mode - exiting due to DB connection failure');
+      process.exit(1);
+    }
+  }
+  
+  try {
+    // Start HTTP server regardless of DB health
+    server = app.listen(config.port, () => {
+      logger.info(`🚀 [Server] Running on port ${config.port} in ${config.nodeEnv} mode`);
+      logger.info(`📖 [Server] API Documentation: http://localhost:${config.port}${apiPrefix}`);
+      
+      if (!isHealthy) {
+        logger.warn(`⚠️ [Server] WARNING: Database is NOT connected - service is degraded`);
+      }
     });
 
-    // Graceful shutdown
+    // Initialize WebSockets
+    initWebSocket(server);
+    
+    // Graceful shutdown handlers
     process.on('SIGTERM', () => gracefulShutdown(server));
     process.on('SIGINT', () => gracefulShutdown(server));
-
+    
+    // Periodic health check to recover from transient failures
+    if (isHealthy) {
+      setInterval(async () => {
+        const health = await checkDatabaseHealth();
+        if (!health.healthy) {
+          logger.warn('💔 [Server] Database health check failed', health.error);
+        }
+      }, 30000); // Check every 30 seconds
+    }
+    
   } catch (error) {
-    logger.error('Failed to start server:', error);
+    logger.error('❌ [Server] Failed to start HTTP server:', error);
     process.exit(1);
   }
 }
 
 function gracefulShutdown(server) {
-  logger.info('Received shutdown signal. Closing server gracefully...');
+  logger.info('🛑 [Server] Received shutdown signal. Closing gracefully...');
   
-  server.close(() => {
-    logger.info('Server closed. Process terminated.');
+  if (!server) {
+    logger.info('👋 [Server] No active server to close');
+    process.exit(0);
+  }
+  
+  // Stop accepting new connections
+  server.close(async () => {
+    logger.info('✅ [Server] HTTP server closed');
+    
+    // Disconnect from database
+    try {
+      await disconnectDatabase();
+    } catch (error) {
+      logger.error('⚠️ [Server] Error during database disconnect:', error.message);
+    }
+    
+    logger.info('👋 [Server] Process terminated gracefully');
     process.exit(0);
   });
 
-  // Force shutdown after 10 seconds
+  // Force shutdown after 15 seconds
   setTimeout(() => {
-    logger.error('Forced shutdown due to timeout');
+    logger.error('⏱️ [Server] Forced shutdown due to timeout');
     process.exit(1);
-  }, 10000);
+  }, 15000);
 }
 
 // Handle unhandled errors
@@ -133,7 +214,13 @@ process.on('unhandledRejection', (reason, promise) => {
 
 // Start server only if not in serverless environment (Vercel)
 if (process.env.VERCEL !== '1') {
-  startServer();
+  console.log('▶️ Calling startServer()...');
+  startServer().catch(err => {
+    console.error('❌ Fatal error starting server:', err);
+    process.exit(1);
+  });
+} else {
+  console.log('ℹ️ Running in Vercel serverless mode - server auto-start disabled');
 }
 
 export default app;

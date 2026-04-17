@@ -1,6 +1,6 @@
-import { prisma } from '../config/database.js';
-import { hashPassword } from '../utils/auth.js';
-import { logger } from '../config/logger.js';
+import { prisma } from '../src/config/database.js';
+import { hashPassword } from '../src/utils/auth.js';
+import { logger } from '../src/config/logger.js';
 
 /**
  * Seed database with initial data
@@ -24,10 +24,13 @@ async function seed() {
     const admin = await prisma.user.create({
       data: {
         email: 'admin@cryptohub.com',
+        username: 'admin',
         passwordHash: adminPassword,
-        fullName: 'Administrador',
         role: 'admin',
-        vipAccess: true
+        vipAccess: true,
+        profile: {
+          create: { fullName: 'Administrador' }
+        }
       }
     });
 
@@ -46,10 +49,13 @@ async function seed() {
       const user = await prisma.user.create({
         data: {
           email: userData.email,
+          username: userData.email.split('@')[0],
           passwordHash: password,
-          fullName: userData.fullName,
           role: userData.role,
-          vipAccess: userData.vipAccess || false
+          vipAccess: userData.vipAccess || false,
+          profile: {
+            create: { fullName: userData.fullName }
+          }
         }
       });
       logger.info(`✅ Sample user created: ${user.email}`);
@@ -59,28 +65,20 @@ async function seed() {
     const samplePosts = [
       {
         content: 'Bem-vindos ao CryptoHub! Esta é uma comunidade para traders e entusiastas de criptomoedas.',
-        authorEmail: 'admin@cryptohub.com',
-        authorName: 'Administrador',
-        accessLevel: 'public',
+        userId: admin.id,
         isPinned: true
       },
       {
         content: 'Dica importante: Sempre faça sua própria pesquisa antes de investir!',
-        authorEmail: 'admin@cryptohub.com',
-        authorName: 'Administrador',
-        accessLevel: 'public'
+        userId: admin.id
       },
       {
         content: 'Análise exclusiva para mentorados: BTC em suporte importante.',
-        authorEmail: 'advanced@example.com',
-        authorName: 'Trader Avançado',
-        accessLevel: 'mentored'
+        userId: admin.id
       },
       {
         content: '🚨 SINAL VIP: Entrada em ETH à $2,800 - Stop loss $2,650',
-        authorEmail: 'admin@cryptohub.com',
-        authorName: 'Administrador',
-        accessLevel: 'vip',
+        userId: admin.id,
         isSignal: true,
         signalType: 'buy'
       }
@@ -98,28 +96,7 @@ async function seed() {
       logger.info(`✅ Sample post created: ${post.id}`);
     }
 
-    // Create sample alerts
-    const sampleAlerts = [
-      {
-        title: 'Bem-vindo ao CryptoHub!',
-        message: 'Esta é a central de alertas. Aqui você receberá notificações importantes.',
-        type: 'info',
-        targetLevel: 'public'
-      },
-      {
-        title: 'Nova sala VIP disponível',
-        message: 'A sala VIP agora está disponível para membros com acesso VIP.',
-        type: 'signal',
-        targetLevel: 'vip'
-      }
-    ];
-
-    for (const alertData of sampleAlerts) {
-      const alert = await prisma.alert.create({
-        data: alertData
-      });
-      logger.info(`✅ Sample alert created: ${alert.id}`);
-    }
+    // Removed alert creation as we do not have an Alert model
 
     logger.info('🎉 Database seed completed successfully!');
 
@@ -131,9 +108,7 @@ async function seed() {
   }
 }
 
-// Run seed if called directly
-if (import.meta.url === `file://${process.argv[1]}`) {
-  seed();
-}
+// Run seed
+seed();
 
 export { seed };

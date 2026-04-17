@@ -12,7 +12,7 @@ export default function SendAlert() {
   const [title, setTitle] = useState('');
   const [message, setMessage] = useState('');
   const [type, setType] = useState('info');
-  const [targetLevel, setTargetLevel] = useState('public');
+  const [targetLevel, setTargetLevel] = useState('all');
   const [targetEmail, setTargetEmail] = useState('');
   const [isSending, setIsSending] = useState(false);
   const { toast } = useToast();
@@ -25,7 +25,7 @@ export default function SendAlert() {
         title,
         message,
         type,
-        targetLevel,
+        targetLevel: targetLevel === 'all' ? 'public' : targetLevel,
         targetEmail: targetEmail || undefined,
       });
       toast({ title: 'Alerta enviado!' });

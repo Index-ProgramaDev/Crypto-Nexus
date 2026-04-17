@@ -52,12 +52,17 @@ export default function CreatePost({ user, accessLevel = 'public', onPostCreated
     let imageUrl = null;
     
     try {
-      // For now, skip image upload (would need separate upload endpoint)
-      // TODO: Implement file upload
+      if (imageFile) {
+        toast({ title: 'Enviando imagem...', description: 'Aguarde um momento.' });
+        const uploadRes = await api.uploadImage(imageFile);
+        if (uploadRes?.data?.url) {
+          imageUrl = uploadRes.data.url;
+        }
+      }
       
       await api.createPost({
         content: content.trim(),
-        imageUrl,
+        mediaUrls: imageUrl ? [imageUrl] : [],
         accessLevel: postLevel,
       });
 
@@ -141,7 +146,7 @@ export default function CreatePost({ user, accessLevel = 'public', onPostCreated
               onClick={handleSubmit}
               disabled={(!content.trim() && !imageFile) || isSubmitting}
               size="sm"
-              className="bg-primary text-primary-foreground hover:bg-primary/90"
+              className="bg-primary text-white hover:bg-primary/90"
             >
               {isSubmitting ? (
                 <Loader2 className="w-4 h-4 animate-spin" />

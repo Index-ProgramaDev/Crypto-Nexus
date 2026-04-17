@@ -1,6 +1,7 @@
 import { AuthService } from '../services/auth.service.js';
 import { loginSchema, registerSchema, updateProfileSchema } from '../utils/validation.js';
 import { asyncHandler } from '../middleware/error.js';
+import { logger } from '../config/logger.js';
 
 export const AuthController = {
   /**
@@ -21,14 +22,37 @@ export const AuthController = {
    * Login user
    * POST /api/v1/auth/login
    */
-  login: asyncHandler(async (req, res) => {
-    const validatedData = loginSchema.parse(req.body);
-    const result = await AuthService.login(validatedData.email, validatedData.password);
+  login: asyncHandler(async (req, res, next) => {
+    try {
+      // Validate input
+      let validatedData;
+      try {
+        validatedData = loginSchema.parse(req.body);
+      } catch (validationError) {
+        logger.warn(`[AuthController.login] Validation failed:`, validationError.errors);
+        return res.status(400).json({
+          success: false,
+          error: 'Invalid input',
+          message: validationError.errors?.map(e => e.message).join(', ') || 'Validation failed'
+        });
+      }
 
-    res.json({
-      success: true,
-      data: result
-    });
+      // Call service
+      const result = await AuthService.login(validatedData.email, validatedData.password);
+
+      return res.json({
+        success: true,
+        data: result
+      });
+    } catch (error) {
+      // Log and pass to error handler
+      logger.error(`[AuthController.login] Error:`, {
+        message: error.message,
+        code: error.code,
+        statusCode: error.statusCode
+      });
+      next(error);
+    }
   }),
 
   /**
@@ -114,6 +138,28 @@ export const AuthController = {
     res.json({
       success: true,
       message: 'Password changed successfully'
+    });
+  }),
+
+  /**
+   * Upload avatar
+   * POST /api/v1/auth/avatar
+   */
+  uploadAvatar: asyncHandler(async (req, res) => {
+    if (!req.file) {
+      throw Object.assign(new Error('No file uploaded'), { statusCode: 400 });
+    }
+
+    // Construct URL
+    const avatarUrl = `${req.protocol}://${req.get('host')}/uploads/${req.file.filename}`;
+
+    // Update user profile with new avatar
+    const user = await AuthService.updateProfile(req.user.id, { avatarUrl });
+
+    res.json({
+      success: true,
+      data: { user, avatarUrl },
+      message: 'Avatar updated successfully'
     });
   })
 };

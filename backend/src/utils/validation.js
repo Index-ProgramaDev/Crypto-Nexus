@@ -14,10 +14,9 @@ export const AlertType = z.enum(['info', 'warning', 'urgent', 'signal']);
 
 // Pagination Schema
 export const paginationSchema = z.object({
-  page: z.string().optional().transform(val => parseInt(val) || 1),
+  page: z.string().optional().transform(val => Math.max(1, Number(val) || 1)),
   limit: z.string().optional().transform(val => {
-    const parsed = parseInt(val) || 20;
-    return Math.min(parsed, 100); // Max 100 items per page
+    return Math.min(50, Math.max(1, Number(val) || 20));
   }),
   sort: z.string().optional().default('-created_at')
 });
@@ -32,7 +31,8 @@ export const loginSchema = z.object({
 export const registerSchema = z.object({
   email: z.string().email('Invalid email format'),
   password: z.string().min(6, 'Password must be at least 6 characters'),
-  fullName: z.string().min(2, 'Full name is required').max(255),
+  username: z.string().min(3, 'Username must be at least 3 characters').max(50).regex(/^[a-zA-Z0-9_]+$/, 'Username can only contain letters, numbers, and underscores').optional(),
+  fullName: z.string().min(2, 'Full name is required').max(255).optional(),
   role: UserRole.optional().default('user')
 });
 
@@ -40,8 +40,10 @@ export const registerSchema = z.object({
 export const updateProfileSchema = z.object({
   fullName: z.string().min(2).max(255).optional(),
   bio: z.string().max(500).optional().nullable(),
-  phone: z.string().max(20).optional().nullable(),
-  avatarUrl: z.string().url().optional().nullable()
+  avatarUrl: z.string().url().optional().nullable(),
+  location: z.string().max(255).optional().nullable(),
+  website: z.string().max(255).optional().nullable(),
+  isPrivate: z.boolean().optional()
 });
 
 // Update User Schema (Admin)
@@ -55,13 +57,13 @@ export const updateUserSchema = z.object({
 // Create Post Schema
 export const createPostSchema = z.object({
   content: z.string().max(5000).optional(),
-  imageUrl: z.string().url().optional().nullable(),
+  mediaUrls: z.array(z.string().url()).optional().default([]),
   accessLevel: AccessLevel.default('public'),
   isSignal: z.boolean().default(false),
   signalType: SignalType.optional()
 }).refine(data => {
-  // Either content or imageUrl must be provided
-  return data.content || data.imageUrl;
+  // Either content or mediaUrls must be provided
+  return data.content || (data.mediaUrls && data.mediaUrls.length > 0);
 }, {
   message: 'Either content or image is required',
   path: ['content']

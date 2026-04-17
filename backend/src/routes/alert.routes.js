@@ -8,6 +8,7 @@ const router = Router();
 router.get('/', authenticate, AlertController.getAlerts);
 router.get('/count', authenticate, AlertController.getUnreadCount);
 router.patch('/:id/read', authenticate, AlertController.markAsRead);
+router.patch('/read-all', authenticate, AlertController.markAllAsRead);
 
 // Admin only routes
 router.post('/', authenticate, requireAdmin, AlertController.createAlert);

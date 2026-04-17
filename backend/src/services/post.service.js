@@ -20,23 +20,50 @@ export class PostService {
       where.accessLevel = accessLevel;
     }
 
-    // Filter by author
-    if (authorEmail) {
-      where.authorEmail = authorEmail;
+    // Enforce access level permissions based on user's role/vip status
+    // If no specific accessLevel requested, filter to what user can see
+    if (!accessLevel && user) {
+      const accessibleLevels = ['public'];
+      if (user.role !== 'user') accessibleLevels.push('mentored');
+      if (user.role === 'advanced' || user.role === 'admin') accessibleLevels.push('advanced');
+      if (user.vipAccess || user.role === 'admin') accessibleLevels.push('vip');
+      where.accessLevel = { in: accessibleLevels };
+    } else if (!accessLevel && !user) {
+      // Non-authenticated users only see public
+      where.accessLevel = 'public';
     }
 
-    // Filter by signal
-    if (isSignal !== undefined) {
-      where.isSignal = isSignal;
+    // Filter by author email (find user first, then filter by userId)
+    if (authorEmail) {
+      const author = await prisma.user.findUnique({
+        where: { email: authorEmail },
+        select: { id: true }
+      });
+      if (author) {
+        where.userId = author.id;
+      }
+    }
+
+    // Filter by signal posts
+    if (isSignal) {
+      where.isSignal = true;
     }
 
     // Calculate pagination
     const skip = (page - 1) * limit;
 
-    // Parse sort order
+    // Parse sort order - map API snake_case to Prisma camelCase
     const orderBy = {};
-    const sortField = sort.startsWith('-') ? sort.substring(1) : sort;
+    const rawSortField = sort.startsWith('-') ? sort.substring(1) : sort;
     const sortOrder = sort.startsWith('-') ? 'desc' : 'asc';
+    // Map common field names from API format to Prisma schema format
+    const fieldMap = {
+      'created_at': 'createdAt',
+      'updated_at': 'updatedAt',
+      'likes_count': 'likesCount',
+      'comments_count': 'commentsCount'
+    };
+    const sortField = fieldMap[rawSortField] || rawSortField;
     orderBy[sortField] = sortOrder;
 
     // Get posts
@@ -50,6 +77,9 @@ export class PostService {
         skip,
         take: limit,
         include: {
+          author: {
+            select: { id: true, username: true, profile: { select: { avatarUrl: true, fullName: true } } }
+          },
           _count: {
             select: { comments: true, likes: true }
           }
@@ -58,10 +88,8 @@ export class PostService {
       prisma.post.count({ where })
     ]);
 
-    // Filter posts based on user access level
-    const accessiblePosts = user 
-      ? posts.filter(post => canViewContent(user.role, user.vipAccess, post.accessLevel))
-      : posts.filter(post => post.accessLevel === 'public');
+    // Public feed (everyone sees everything active)
+    const accessiblePosts = posts;
 
     return {
       posts: accessiblePosts.map(post => ({
@@ -100,10 +128,7 @@ export class PostService {
       throw Object.assign(new Error('Post not found'), { statusCode: 404 });
     }
 
-    // Check access
-    if (!canViewContent(user?.role, user?.vipAccess, post.accessLevel)) {
-      throw Object.assign(new Error('Access denied'), { statusCode: 403 });
-    }
+    // Removed role access checking as logic is transitioning to Graph
 
     return {
       ...post,
@@ -114,25 +139,70 @@ export class PostService {
   }
 
   /**
+   * Get Feed for User (Posts from users they follow + their own)
+   */
+  static async getFeed(user, { page = 1, limit = 20 } = {}) {
+    // 1. Get all users the current user is following
+    const following = await prisma.follow.findMany({
+      where: { followerId: user.id },
+      select: { followingId: true }
+    });
+    
+    // Create an array of IDs representing the feed context (followed + self)
+    const feedUserIds = [...following.map(f => f.followingId), user.id];
+    
+    const skip = (page - 1) * limit;
+    const where = {
+      userId: { in: feedUserIds },
+      status: 'active'
+    };
+
+    const [posts, total] = await Promise.all([
+      prisma.post.findMany({
+        where,
+        orderBy: { createdAt: 'desc' },
+        skip,
+        take: limit,
+        include: {
+          author: {
+            select: { id: true, username: true, profile: { select: { avatarUrl: true, fullName: true } } }
+          },
+          _count: { select: { comments: true, likes: true } }
+        }
+      }),
+      prisma.post.count({ where })
+    ]);
+
+    return {
+      posts: posts.map(post => ({
+        ...post,
+        likesCount: post._count.likes,
+        commentsCount: post._count.comments,
+        _count: undefined
+      })),
+      pagination: {
+        page, limit, total,
+        totalPages: Math.ceil(total / limit),
+        hasMore: skip + posts.length < total
+      }
+    };
+  }
+
+  /**
    * Create new post
    * @param {Object} postData - Post data
    * @param {Object} user - Author user
    * @returns {Object} Created post
    */
   static async createPost(postData, user) {
-    const { content, imageUrl, accessLevel, isSignal, signalType } = postData;
-
-    // Non-admins can only create public posts
-    if (user.role !== 'admin' && accessLevel !== 'public') {
-      throw Object.assign(new Error('Only admins can create restricted posts'), { statusCode: 403 });
-    }
+    const { content, mediaUrls, accessLevel, isSignal, signalType } = postData;
 
     // Check content for non-admins (moderation)
     if (user.role !== 'admin' && content) {
       const { hasContact } = detectContactInfo(content);
       if (hasContact) {
         throw Object.assign(
-          new Error('Content contains contact information which is not allowed'), 
+          new Error('Content contains contact information which is not allowed'),
           { statusCode: 400, code: 'contact_info_detected' }
         );
       }
@@ -141,18 +211,16 @@ export class PostService {
     const post = await prisma.post.create({
       data: {
         content,
-        imageUrl,
-        authorEmail: user.email,
-        authorName: user.fullName,
-        authorAvatar: user.avatarUrl,
-        accessLevel,
+        mediaUrls: mediaUrls || [],
+        userId: user.id,
+        accessLevel: accessLevel || 'public',
+        status: 'active',
         isSignal: isSignal || false,
-        signalType,
-        status: 'active'
+        signalType: signalType || null
       }
     });
 
-    logger.info(`Post created by ${user.email}: ${post.id}`);
+    logger.info(`Post created by user ${user.id}: ${post.id}${isSignal ? ' (signal: ' + signalType + ')' : ''}`);
     return post;
   }
 
@@ -173,7 +241,7 @@ export class PostService {
     }
 
     // Check ownership or admin
-    if (post.authorEmail !== user.email && user.role !== 'admin') {
+    if (post.userId !== user.id && user.role !== 'admin') {
       throw Object.assign(new Error('Not authorized to update this post'), { statusCode: 403 });
     }
 
@@ -206,7 +274,7 @@ export class PostService {
     }
 
     // Check ownership or admin
-    if (post.authorEmail !== user.email && user.role !== 'admin') {
+    if (post.userId !== user.id && user.role !== 'admin') {
       throw Object.assign(new Error('Not authorized to delete this post'), { statusCode: 403 });
     }
 

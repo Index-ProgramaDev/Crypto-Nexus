@@ -1,11 +1,15 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { Link, useLocation } from 'react-router-dom';
+import { useQuery } from '@tanstack/react-query';
 import {
   Home, MessageSquare, Signal, User, Shield, Bell,
   HelpCircle, LogOut, Crown, X, TrendingUp, Users
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { useAuth } from '@/lib/AuthContext';
+import { api } from '@/api/apiClient';
+import ChatDialog from '@/components/chat/ChatDialog';
 
 const navItems = [
   { path: '/', label: 'Feed', icon: Home, level: 'all' },
@@ -25,6 +29,31 @@ export default function Sidebar({ user, isOpen, onClose }) {
   const location = useLocation();
   const { logout } = useAuth();
   const isAdmin = user?.role === 'admin';
+  const [activeChat, setActiveChat] = useState(null);
+
+  // Listen for openChat event from feed
+  useEffect(() => {
+    const handleOpenChat = (e) => {
+      console.log('openChat event received:', e.detail);
+      setActiveChat(e.detail.conversationId);
+    };
+    window.addEventListener('openChat', handleOpenChat);
+    console.log('openChat listener registered');
+    return () => window.removeEventListener('openChat', handleOpenChat);
+  }, []);
+
+  const { data: conversationsData } = useQuery({
+    queryKey: ['conversations'],
+    queryFn: () => api.getConversations(),
+    enabled: !!user,
+    refetchInterval: 5000
+  });
+
+  const conversations = conversationsData?.data?.conversations || [];
+
+  const getOtherParticipant = (conversation) => {
+    return conversation.participants?.find(p => p.user.id !== user?.id)?.user;
+  };
 
   const canAccess = (level) => {
     if (level === 'all') return true;
@@ -66,16 +95,14 @@ export default function Sidebar({ user, isOpen, onClose }) {
               return (
                 <Link
                   key={item.path}
-                  to={accessible ? item.path : '#'}
+                  to={item.path}
                   onClick={onClose}
                   className={`
                     flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium
                     transition-all duration-200
                     ${active
                       ? 'bg-primary/10 text-primary'
-                      : accessible
-                        ? 'text-muted-foreground hover:text-foreground hover:bg-secondary'
-                        : 'text-muted-foreground/40 cursor-not-allowed'
+                      : 'text-muted-foreground hover:text-foreground hover:bg-secondary'
                     }
                   `}
                 >
@@ -94,6 +121,44 @@ export default function Sidebar({ user, isOpen, onClose }) {
                 </Link>
               );
             })}
+
+            {conversations.length > 0 && (
+              <>
+                <div className="pt-4 pb-2 px-3">
+                  <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">
+                    Bate-papo
+                  </p>
+                </div>
+                {conversations.map(conversation => {
+                  const otherUser = getOtherParticipant(conversation);
+                  const lastMessage = conversation.messages?.[0];
+                  return (
+                    <button
+                      key={conversation.id}
+                      onClick={() => setActiveChat(conversation.id)}
+                      className="flex items-center gap-2 w-full px-3 py-2 rounded-lg text-sm hover:bg-secondary transition-all"
+                    >
+                      <Avatar className="w-7 h-7 border border-border">
+                        <AvatarImage src={otherUser?.profile?.avatarUrl} alt={otherUser?.profile?.fullName || otherUser?.username} />
+                        <AvatarFallback className="text-[10px] bg-primary/20">
+                          {otherUser?.profile?.fullName?.charAt(0) || otherUser?.username?.charAt(0) || '?'}
+                        </AvatarFallback>
+                      </Avatar>
+                      <div className="flex-1 min-w-0 text-left">
+                        <p className="text-sm font-medium truncate">
+                          {otherUser?.profile?.fullName || otherUser?.username || 'Usuário'}
+                        </p>
+                        {lastMessage && (
+                          <p className="text-[10px] text-muted-foreground truncate">
+                            {lastMessage.content.substring(0, 30)}...
+                          </p>
+                        )}
+                      </div>
+                    </button>
+                  );
+                })}
+              </>
+            )}
 
             {isAdmin && (
               <>
@@ -129,7 +194,7 @@ export default function Sidebar({ user, isOpen, onClose }) {
 
           <div className="p-3 border-t border-border">
             <button
-              onClick={() => useAuth().logout()}
+              onClick={logout}
               className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-all w-full"
             >
               <LogOut className="w-4 h-4" />
@@ -138,6 +203,15 @@ export default function Sidebar({ user, isOpen, onClose }) {
           </div>
         </div>
       </aside>
+
+      {/* Chat Dialog */}
+      {activeChat && (
+        <ChatDialog
+          conversationId={activeChat}
+          currentUser={user}
+          onClose={() => setActiveChat(null)}
+        />
+      )}
     </>
   );
 }

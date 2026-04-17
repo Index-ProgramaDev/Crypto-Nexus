@@ -10,6 +10,8 @@ export const AuthProvider = ({ children }) => {
   const [isLoadingPublicSettings, setIsLoadingPublicSettings] = useState(false);
   const [authError, setAuthError] = useState(null);
   const [appPublicSettings, setAppPublicSettings] = useState(null);
+  const [isBlocked, setIsBlocked] = useState(false);
+  const [blockedInfo, setBlockedInfo] = useState(null);
 
   useEffect(() => {
     checkUserAuth();
@@ -29,8 +31,26 @@ export const AuthProvider = ({ children }) => {
 
       const response = await api.getMe();
       if (response.data?.user) {
-        setUser(response.data.user);
+        const userData = response.data.user;
+        
+        // Check if user is blocked
+        if (userData.isBlocked) {
+          setIsBlocked(true);
+          setBlockedInfo({
+            blockedUntil: userData.blockedUntil,
+            reason: userData.blockReason || 'Violação dos termos de uso'
+          });
+          setUser(null);
+          setIsAuthenticated(false);
+          api.setToken(null);
+          setIsLoadingAuth(false);
+          return;
+        }
+        
+        setUser(userData);
         setIsAuthenticated(true);
+        setIsBlocked(false);
+        setBlockedInfo(null);
       }
     } catch (error) {
       console.error('Auth check failed:', error);
@@ -56,9 +76,32 @@ export const AuthProvider = ({ children }) => {
       const response = await api.login(email, password);
       
       if (response.data?.user) {
-        setUser(response.data.user);
+        const userData = response.data.user;
+        
+        // Check if user is blocked on login
+        if (userData.isBlocked) {
+          setIsBlocked(true);
+          setBlockedInfo({
+            blockedUntil: userData.blockedUntil,
+            reason: userData.blockReason || 'Violação dos termos de uso'
+          });
+          api.setToken(null);
+          return { 
+            success: false, 
+            blocked: true, 
+            error: 'Conta bloqueada',
+            blockedInfo: {
+              blockedUntil: userData.blockedUntil,
+              reason: userData.blockReason || 'Violação dos termos de uso'
+            }
+          };
+        }
+        
+        setUser(userData);
         setIsAuthenticated(true);
-        return { success: true, user: response.data.user };
+        setIsBlocked(false);
+        setBlockedInfo(null);
+        return { success: true, user: userData };
       }
     } catch (error) {
       console.error('Login failed:', error);
@@ -134,6 +177,8 @@ export const AuthProvider = ({ children }) => {
       isLoadingPublicSettings,
       authError,
       appPublicSettings,
+      isBlocked,
+      blockedInfo,
       login,
       register,
       logout,

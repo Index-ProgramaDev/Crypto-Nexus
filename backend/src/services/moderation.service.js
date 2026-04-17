@@ -113,6 +113,20 @@ export class ModerationService {
    * @param {number} days - Number of days (null for permanent)
    */
   static async blockUser(userId, days = null) {
+    // Get user first to check if admin
+    const targetUser = await prisma.user.findUnique({
+      where: { id: userId }
+    });
+
+    if (!targetUser) {
+      throw new Error('User not found');
+    }
+
+    // Admins cannot be blocked
+    if (targetUser.role === 'admin') {
+      throw new Error('Cannot block admin users');
+    }
+
     const updateData = {
       isBlocked: true
     };

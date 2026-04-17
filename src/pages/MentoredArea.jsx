@@ -1,40 +1,35 @@
 import React from 'react';
-import { base44 } from '@/api/base44Client';
+import { api } from '@/api/apiClient';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '@/lib/AuthContext';
 import CreatePost from '@/components/feed/CreatePost';
 import PostList from '@/components/feed/PostList';
 import { Lock, GraduationCap } from 'lucide-react';
+import AccessDeniedDialog from '@/components/auth/AccessDeniedDialog';
 
 export default function MentoredArea() {
   const { user } = useAuth();
   const queryClient = useQueryClient();
   const hasAccess = ['mentored', 'advanced', 'admin'].includes(user?.role);
 
-  const { data: posts = [], isLoading } = useQuery({
+  const { data: postsData, isLoading } = useQuery({
     queryKey: ['posts', 'mentored'],
-    queryFn: () => base44.entities.Post.filter({ access_level: 'mentored', status: 'active' }, '-created_date', 50),
+    queryFn: () => api.getPosts({ accessLevel: 'mentored', status: 'active' }),
     enabled: hasAccess,
   });
 
-  const { data: userLikes = [] } = useQuery({
-    queryKey: ['likes', user?.email],
-    queryFn: () => base44.entities.Like.filter({ user_email: user?.email }),
-    enabled: !!user?.email,
+  const posts = postsData?.data?.posts || [];
+
+  const { data: likesData } = useQuery({
+    queryKey: ['likes', user?.id],
+    queryFn: () => api.getUserLikes(),
+    enabled: !!user?.id,
   });
 
+  const userLikes = likesData?.data?.likes || [];
+
   if (!hasAccess) {
-    return (
-      <div className="flex flex-col items-center justify-center min-h-[60vh] text-center px-4">
-        <div className="w-16 h-16 rounded-2xl bg-primary/10 flex items-center justify-center mb-4">
-          <Lock className="w-8 h-8 text-primary" />
-        </div>
-        <h2 className="text-xl font-bold mb-2">Área Exclusiva</h2>
-        <p className="text-muted-foreground text-sm max-w-md">
-          Esta área é exclusiva para mentorados. Entre em contato com a administração para obter acesso.
-        </p>
-      </div>
-    );
+    return <AccessDeniedDialog area="mentored" onClose={() => window.history.back()} />;
   }
 
   const refresh = () => {

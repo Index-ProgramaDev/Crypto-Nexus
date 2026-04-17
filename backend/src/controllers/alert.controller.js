@@ -50,11 +50,25 @@ export const AlertController = {
    */
   markAsRead: asyncHandler(async (req, res) => {
     const { id } = uuidParamSchema.parse(req.params);
-    const alert = await AlertService.markAsRead(id, req.user.email);
+    const alert = await AlertService.markAsRead(id, req.user?.email);
 
     res.json({
       success: true,
       data: { alert }
+    });
+  }),
+
+  /**
+   * Mark all alerts as read for user
+   * PATCH /api/v1/alerts/read-all
+   */
+  markAllAsRead: asyncHandler(async (req, res) => {
+    const result = await AlertService.markAllAsRead(req.user);
+
+    res.json({
+      success: true,
+      data: result,
+      message: 'All alerts marked as read'
     });
   }),
 

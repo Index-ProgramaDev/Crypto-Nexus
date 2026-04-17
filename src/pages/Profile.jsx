@@ -7,34 +7,55 @@ import { Textarea } from '@/components/ui/textarea';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import { Card } from '@/components/ui/card';
-import { Camera, Save, Loader2 } from 'lucide-react';
+import { Camera, Save, Loader2, MapPin, Calendar, Lock, MessageSquare } from 'lucide-react';
 import { getRoleBadge, detectContactInfo } from '@/lib/moderation';
 import { useToast } from '@/components/ui/use-toast';
 import { useAuth } from '@/lib/AuthContext';
 import PostList from '@/components/feed/PostList';
+import { useSearchParams } from 'react-router-dom';
 
 export default function Profile() {
+  const [searchParams] = useSearchParams();
+  const userId = searchParams.get('userId');
   const queryClient = useQueryClient();
   const { toast } = useToast();
   const { user: authUser, updateUser } = useAuth();
+  const isViewingOther = userId && userId !== authUser?.id;
 
   const [isEditing, setIsEditing] = useState(false);
   const [bio, setBio] = useState('');
   const [phone, setPhone] = useState('');
+  const [location, setLocation] = useState('');
+  const [birthDate, setBirthDate] = useState('');
+  const [isPrivate, setIsPrivate] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
-  const badge = getRoleBadge(authUser?.role, authUser?.vipAccess);
 
   useEffect(() => {
     if (authUser) {
       setBio(authUser.bio || '');
       setPhone(authUser.phone || '');
+      setLocation(authUser.profile?.location || '');
+      setBirthDate(authUser.profile?.birthDate ? authUser.profile.birthDate.split('T')[0] : '');
+      setIsPrivate(authUser.profile?.isPrivate || false);
     }
   }, [authUser]);
 
+  // Fetch other user's data if viewing their profile
+  const { data: otherUserData } = useQuery({
+    queryKey: ['user', userId],
+    queryFn: () => api.getUser(userId),
+    enabled: !!isViewingOther,
+  });
+
+  const viewedUser = isViewingOther ? otherUserData?.data?.user : authUser;
+  const viewedUserId = viewedUser?.id;
+  const viewedEmail = viewedUser?.email;
+  const badge = getRoleBadge(viewedUser?.role, viewedUser?.vipAccess);
+
   const { data: postsData, isLoading } = useQuery({
-    queryKey: ['posts', 'user', authUser?.email],
-    queryFn: () => api.getPosts({ authorEmail: authUser?.email, status: 'active', limit: 20 }),
-    enabled: !!authUser?.email,
+    queryKey: ['posts', 'user', viewedEmail],
+    queryFn: () => api.getPosts({ authorEmail: viewedEmail, status: 'active', limit: 20 }),
+    enabled: !!viewedEmail,
   });
 
   const { data: likesData } = useQuery({
@@ -46,11 +67,30 @@ export default function Profile() {
   const userPosts = postsData?.data?.posts || [];
   const userLikes = likesData?.data?.likes || [];
 
+  const [isUploadingAvatar, setIsUploadingAvatar] = useState(false);
+
   const handleAvatarUpload = async (e) => {
     const file = e.target.files[0];
     if (!file) return;
-    // TODO: Implement file upload
-    toast({ title: 'Upload de imagem não implementado ainda' });
+
+    // Validate file size (2MB max)
+    if (file.size > 2 * 1024 * 1024) {
+      toast({ title: 'Arquivo muito grande', description: 'Máximo 2MB permitido', variant: 'destructive' });
+      return;
+    }
+
+    setIsUploadingAvatar(true);
+    try {
+      const response = await api.uploadAvatar(file);
+      if (response.success) {
+        updateUser({ avatarUrl: response.data.avatarUrl });
+        toast({ title: 'Foto de perfil atualizada!' });
+      }
+    } catch (error) {
+      toast({ title: 'Erro ao fazer upload', description: error.message, variant: 'destructive' });
+    } finally {
+      setIsUploadingAvatar(false);
+    }
   };
 
   const handleSave = async () => {
@@ -63,7 +103,13 @@ export default function Profile() {
     }
     setIsSaving(true);
     try {
-      await updateUser({ bio, phone });
+      await updateUser({ 
+        bio, 
+        phone,
+        location,
+        birthDate: birthDate || null,
+        isPrivate
+      });
       setIsEditing(false);
       toast({ title: 'Perfil atualizado!' });
     } catch (error) {
@@ -89,9 +135,13 @@ export default function Profile() {
                 {authUser?.fullName?.charAt(0)?.toUpperCase() || '?'}
               </AvatarFallback>
             </Avatar>
-            <label className="absolute bottom-0 right-0 w-7 h-7 rounded-full bg-primary flex items-center justify-center cursor-pointer hover:bg-primary/90 transition-colors">
-              <Camera className="w-3.5 h-3.5 text-primary-foreground" />
-              <input type="file" accept="image/*" className="hidden" onChange={handleAvatarUpload} />
+            <label className={`absolute bottom-0 right-0 w-7 h-7 rounded-full bg-primary flex items-center justify-center cursor-pointer hover:bg-primary/90 transition-colors ${isUploadingAvatar ? 'opacity-70' : ''}`}>
+              {isUploadingAvatar ? (
+                <Loader2 className="w-3.5 h-3.5 text-primary-foreground animate-spin" />
+              ) : (
+                <Camera className="w-3.5 h-3.5 text-primary-foreground" />
+              )}
+              <input type="file" accept="image/*" className="hidden" onChange={handleAvatarUpload} disabled={isUploadingAvatar} />
             </label>
           </div>
 
@@ -111,6 +161,33 @@ export default function Profile() {
 
         {isEditing && (
           <div className="mt-6 space-y-4 pt-4 border-t border-border">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div>
+                <label className="text-sm font-medium mb-1 block flex items-center gap-1">
+                  <MapPin className="w-3.5 h-3.5" /> Localização
+                </label>
+                <Input value={location} onChange={(e) => setLocation(e.target.value)} placeholder="Cidade, País" />
+              </div>
+              <div>
+                <label className="text-sm font-medium mb-1 block flex items-center gap-1">
+                  <Calendar className="w-3.5 h-3.5" /> Data de Nascimento
+                </label>
+                <Input type="date" value={birthDate} onChange={(e) => setBirthDate(e.target.value)} />
+              </div>
+              <div>
+                <label className="text-sm font-medium mb-1 block flex items-center gap-1">
+                  <Lock className="w-3.5 h-3.5" /> Perfil Privado
+                </label>
+                <select
+                  value={isPrivate ? 'true' : 'false'}
+                  onChange={(e) => setIsPrivate(e.target.value === 'true')}
+                  className="w-full h-9 rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm"
+                >
+                  <option value="false">Público</option>
+                  <option value="true">Privado</option>
+                </select>
+              </div>
+            </div>
             <div>
               <label className="text-sm font-medium mb-1 block">Telefone</label>
               <Input value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="Seu telefone" />
@@ -126,8 +203,27 @@ export default function Profile() {
           </div>
         )}
 
-        {!isEditing && authUser?.bio && (
-          <p className="mt-4 pt-4 border-t border-border text-sm text-muted-foreground">{authUser.bio}</p>
+        {!isEditing && (
+          <div className="mt-4 pt-4 border-t border-border space-y-2">
+            {authUser?.profile?.location && (
+              <p className="text-sm text-muted-foreground flex items-center gap-1.5">
+                <MapPin className="w-3.5 h-3.5" /> {authUser.profile.location}
+              </p>
+            )}
+            {authUser?.profile?.birthDate && (
+              <p className="text-sm text-muted-foreground flex items-center gap-1.5">
+                <Calendar className="w-3.5 h-3.5" /> {new Date(authUser.profile.birthDate).toLocaleDateString('pt-BR')}
+              </p>
+            )}
+            {authUser?.profile?.isPrivate && (
+              <p className="text-sm text-muted-foreground flex items-center gap-1.5">
+                <Lock className="w-3.5 h-3.5" /> Perfil Privado
+              </p>
+            )}
+            {authUser?.bio && (
+              <p className="text-sm text-muted-foreground">{authUser.bio}</p>
+            )}
+          </div>
         )}
       </Card>
 

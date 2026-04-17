@@ -43,7 +43,8 @@ export async function authenticate(req, res, next) {
 
     // Check if user exists and is not blocked
     const user = await prisma.user.findUnique({
-      where: { id: decoded.userId }
+      where: { id: decoded.userId },
+      include: { profile: true }
     });
 
     if (!user) {
@@ -77,7 +78,8 @@ export async function authenticate(req, res, next) {
     req.user = {
       id: user.id,
       email: user.email,
-      fullName: user.fullName,
+      username: user.username,
+      fullName: user.profile?.fullName || user.username,
       role: user.role,
       vipAccess: user.vipAccess,
       violationCount: user.violationCount
@@ -119,12 +121,21 @@ export async function optionalAuth(req, res, next) {
           role: true,
           vipAccess: true,
           violationCount: true,
-          isBlocked: true
+          isBlocked: true,
+          profile: true
         }
       });
 
       if (user && !user.isBlocked) {
-        req.user = user;
+        req.user = {
+          id: user.id,
+          email: user.email,
+          username: user.username,
+          fullName: user.profile?.fullName || user.username,
+          role: user.role,
+          vipAccess: user.vipAccess,
+          violationCount: user.violationCount
+        };
       }
     } catch (err) {
       // Invalid token, continue without user

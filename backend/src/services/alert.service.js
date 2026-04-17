@@ -86,6 +86,32 @@ export class AlertService {
   }
 
   /**
+   * Mark all alerts as read for user
+   * @param {Object} user - Current user
+   * @returns {Object} Update result
+   */
+  static async markAllAsRead(user) {
+    const where = {
+      isRead: false,
+      OR: [
+        { targetEmail: user.email },
+        { targetEmail: null, targetLevel: 'public' },
+        ...(user.role !== 'user' ? [{ targetEmail: null, targetLevel: 'mentored' }] : []),
+        ...(user.role === 'advanced' || user.role === 'admin' ? [{ targetEmail: null, targetLevel: 'advanced' }] : []),
+        ...(user.vipAccess || user.role === 'admin' ? [{ targetEmail: null, targetLevel: 'vip' }] : [])
+      ]
+    };
+
+    const { count } = await prisma.alert.updateMany({
+      where,
+      data: { isRead: true }
+    });
+
+    logger.info(`Marked ${count} alerts as read for user ${user.email}`);
+    return { count };
+  }
+
+  /**
    * Delete alert (admin only)
    * @param {string} alertId - Alert ID
    */

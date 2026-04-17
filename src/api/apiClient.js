@@ -1,4 +1,3 @@
-// Custom API client for CryptoHub backend
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000/api/v1';
 
 class ApiError extends Error {
@@ -108,6 +107,26 @@ class ApiClient {
     });
   }
 
+  async uploadAvatar(file) {
+    const formData = new FormData();
+    formData.append('avatar', file);
+
+    const response = await fetch(`${this.baseURL}/auth/avatar`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${this.token}`
+      },
+      body: formData
+    });
+
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({ message: 'Upload failed' }));
+      throw new ApiError(error.message || 'Upload failed', response.status);
+    }
+
+    return response.json();
+  }
+
   async refreshToken(refreshToken) {
     const data = await this.request('/auth/refresh', {
       method: 'POST',
@@ -212,6 +231,40 @@ class ApiClient {
     });
   }
 
+  async markAllAlertsRead() {
+    return this.request('/alerts/read-all', {
+      method: 'PATCH'
+    });
+  }
+
+  // Moderation methods
+  async getModerationLogs(filters = {}) {
+    const params = new URLSearchParams();
+    Object.entries(filters).forEach(([key, value]) => {
+      if (value !== undefined && value !== null) {
+        params.append(key, value);
+      }
+    });
+    const query = params.toString() ? `?${params.toString()}` : '';
+    return this.request(`/moderation/logs${query}`);
+  }
+
+  async getPendingPosts() {
+    return this.request('/posts?status=pending');
+  }
+
+  async approvePost(postId) {
+    return this.request(`/posts/${postId}/approve`, {
+      method: 'PATCH'
+    });
+  }
+
+  async rejectPost(postId) {
+    return this.request(`/posts/${postId}/reject`, {
+      method: 'PATCH'
+    });
+  }
+
   // Admin methods
   async getUsers(filters = {}) {
     const params = new URLSearchParams();
@@ -286,6 +339,65 @@ class ApiClient {
   async togglePinPost(postId) {
     return this.request(`/posts/${postId}/pin`, {
       method: 'POST'
+    });
+  }
+
+  // Upload methods
+  async uploadImage(file) {
+    const formData = new FormData();
+    formData.append('file', file);
+    
+    // Manual fetch since it's FormData, not JSON
+    const url = `${this.baseURL}/upload`;
+    const headers = {};
+    if (this.token) {
+      headers['Authorization'] = `Bearer ${this.token}`;
+    }
+
+    const response = await fetch(url, {
+      method: 'POST',
+      headers,
+      body: formData
+    });
+    
+    const data = await response.json();
+    if (!response.ok) {
+      throw new ApiError(data.message || 'Upload failed', response.status, data.code);
+    }
+    return data;
+  }
+
+  // Chat methods
+  async getConversations() {
+    return this.request('/chat');
+  }
+
+  async getConversation(conversationId) {
+    return this.request(`/chat/${conversationId}`);
+  }
+
+  async startConversation(userId) {
+    return this.request(`/chat/user/${userId}`, {
+      method: 'POST'
+    });
+  }
+
+  async adminStartConversation(userId) {
+    return this.request(`/chat/admin/start/${userId}`, {
+      method: 'POST'
+    });
+  }
+
+  async sendMessage(conversationId, content, mediaUrls = []) {
+    return this.request(`/chat/${conversationId}/messages`, {
+      method: 'POST',
+      body: JSON.stringify({ content, mediaUrls })
+    });
+  }
+
+  async deleteConversation(conversationId) {
+    return this.request(`/chat/${conversationId}`, {
+      method: 'DELETE'
     });
   }
 }

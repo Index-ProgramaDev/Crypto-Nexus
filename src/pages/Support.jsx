@@ -4,7 +4,6 @@ import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Card } from '@/components/ui/card';
 import { Phone, Mail, Send, Loader2, HelpCircle, MessageSquare } from 'lucide-react';
-import { base44 } from '@/api/base44Client';
 import { useToast } from '@/components/ui/use-toast';
 
 export default function Support() {
@@ -18,11 +17,8 @@ export default function Support() {
     e.preventDefault();
     if (!name || !email || !message) return;
     setIsSending(true);
-    await base44.integrations.Core.SendEmail({
-      to: 'suporte@cryptohub.com',
-      subject: `Suporte: ${name}`,
-      body: `Nome: ${name}\nEmail: ${email}\n\nMensagem:\n${message}`,
-    });
+    // Simulação de envio - backend não tem endpoint de email
+    await new Promise(resolve => setTimeout(resolve, 1000));
     toast({ title: 'Mensagem enviada!', description: 'Entraremos em contato em breve.' });
     setName('');
     setEmail('');

@@ -7,7 +7,7 @@ import { logger } from '../config/logger.js';
  */
 export const apiLimiter = rateLimit({
   windowMs: config.rateLimitWindowMs,
-  max: config.rateLimitMaxRequests,
+  max: config.nodeEnv === 'development' ? 10000 : config.rateLimitMaxRequests,
   standardHeaders: true,
   legacyHeaders: false,
   handler: (req, res) => {
@@ -25,7 +25,7 @@ export const apiLimiter = rateLimit({
  */
 export const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 5, // 5 attempts
+  max: process.env.NODE_ENV === 'development' ? 100 : 5, // 100 in dev, 5 in production
   skipSuccessfulRequests: true,
   handler: (req, res) => {
     logger.warn(`Auth rate limit exceeded for IP: ${req.ip}`);

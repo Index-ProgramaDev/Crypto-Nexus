@@ -7,17 +7,40 @@ import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import { Search, Shield, Crown, Ban, Unlock, Loader2, UserPlus } from 'lucide-react';
+import { Search, Shield, Crown, Ban, Unlock, Loader2, UserPlus, Eye, MessageSquare } from 'lucide-react';
 import { getRoleBadge } from '@/lib/moderation';
 import { useToast } from '@/components/ui/use-toast';
+import UserDetailDialog from './UserDetailDialog';
+import ChatDialog from '@/components/chat/ChatDialog';
+import { useAuth } from '@/lib/AuthContext';
 
 export default function UserManagement() {
   const [search, setSearch] = useState('');
   const [roleFilter, setRoleFilter] = useState('all');
   const [inviteEmail, setInviteEmail] = useState('');
   const [inviteRole, setInviteRole] = useState('user');
+  const [selectedUserId, setSelectedUserId] = useState(null);
+  const [detailOpen, setDetailOpen] = useState(false);
+  const [chatOpen, setChatOpen] = useState(false);
+  const [conversationId, setConversationId] = useState(null);
   const { toast } = useToast();
   const queryClient = useQueryClient();
+  const { user: currentUser } = useAuth();
+
+  const openUserDetail = (userId) => {
+    setSelectedUserId(userId);
+    setDetailOpen(true);
+  };
+
+  const openChat = async (userId) => {
+    try {
+      const response = await api.adminStartConversation(userId);
+      setConversationId(response.data.conversation.id);
+      setChatOpen(true);
+    } catch (error) {
+      toast({ title: 'Erro', description: error.message, variant: 'destructive' });
+    }
+  };
 
   const { data: usersData, isLoading } = useQuery({
     queryKey: ['admin-users'],
@@ -27,7 +50,7 @@ export default function UserManagement() {
   const users = usersData?.data?.users || [];
 
   const filtered = users.filter(u => {
-    const matchSearch = !search || u.fullName?.toLowerCase().includes(search.toLowerCase()) || u.email?.toLowerCase().includes(search.toLowerCase());
+    const matchSearch = !search || u.profile?.fullName?.toLowerCase().includes(search.toLowerCase()) || u.email?.toLowerCase().includes(search.toLowerCase());
     const matchRole = roleFilter === 'all' || u.role === roleFilter;
     return matchSearch && matchRole;
   });
@@ -104,12 +127,12 @@ export default function UserManagement() {
               <Card key={u.id} className="p-4 border-border">
                 <div className="flex items-center gap-3">
                   <Avatar className="w-10 h-10 border border-border">
-                    <AvatarImage src={u.avatarUrl} />
-                    <AvatarFallback className="bg-secondary text-sm">{u.fullName?.charAt(0)?.toUpperCase() || '?'}</AvatarFallback>
+                    <AvatarImage src={u.profile?.avatarUrl} />
+                    <AvatarFallback className="bg-secondary text-sm">{u.profile?.fullName?.charAt(0)?.toUpperCase() || '?'}</AvatarFallback>
                   </Avatar>
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2">
-                      <span className="font-medium text-sm truncate">{u.fullName || 'Sem nome'}</span>
+                      <span className="font-medium text-sm truncate">{u.profile?.fullName || 'Sem nome'}</span>
                       <Badge variant="outline" className="text-[10px] shrink-0">{badge.label}</Badge>
                       {u.isBlocked && <Badge variant="destructive" className="text-[10px]">Bloqueado</Badge>}
                       {u.vipAccess && <Badge className="bg-neon-purple/10 text-neon-purple text-[10px]">VIP</Badge>}
@@ -118,6 +141,24 @@ export default function UserManagement() {
                     {u.violationCount > 0 && <p className="text-[10px] text-destructive">Violações: {u.violationCount}</p>}
                   </div>
                   <div className="flex items-center gap-1 shrink-0">
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-8 w-8"
+                      onClick={() => openUserDetail(u.id)}
+                      title="Ver detalhes"
+                    >
+                      <Eye className="w-4 h-4 text-muted-foreground" />
+                    </Button>
+                    <Button
+                      variant="default"
+                      size="sm"
+                      className="h-8 bg-neon-purple hover:bg-neon-purple/90 text-white"
+                      onClick={() => openChat(u.id)}
+                      title="Iniciar bate-papo"
+                    >
+                      <MessageSquare className="w-4 h-4 mr-1" /> Chat
+                    </Button>
                     <Select value={u.role || 'user'} onValueChange={(val) => updateUser(u.id, { role: val })}>
                       <SelectTrigger className="w-28 h-8 text-xs">
                         <SelectValue />
@@ -153,6 +194,20 @@ export default function UserManagement() {
             );
           })}
         </div>
+      )}
+
+      <UserDetailDialog
+        userId={selectedUserId}
+        open={detailOpen}
+        onClose={() => setDetailOpen(false)}
+      />
+
+      {chatOpen && conversationId && (
+        <ChatDialog
+          conversationId={conversationId}
+          currentUser={currentUser}
+          onClose={() => setChatOpen(false)}
+        />
       )}
     </div>
   );

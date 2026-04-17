@@ -4,12 +4,12 @@ import { logger } from '../config/logger.js';
 export class LikeService {
   /**
    * Get likes for current user
-   * @param {string} userEmail - User email
+   * @param {string} userId - User ID (UUID)
    * @returns {Array} User's likes
    */
-  static async getUserLikes(userEmail) {
+  static async getUserLikes(userId) {
     const likes = await prisma.like.findMany({
-      where: { userEmail },
+      where: { userId },
       orderBy: { createdAt: 'desc' }
     });
 
@@ -19,10 +19,10 @@ export class LikeService {
   /**
    * Toggle like on a post
    * @param {string} postId - Post ID
-   * @param {string} userEmail - User email
+   * @param {string} userId - User ID (UUID)
    * @returns {Object} Result with liked status
    */
-  static async toggleLike(postId, userEmail) {
+  static async toggleLike(postId, userId) {
     // Check if post exists
     const post = await prisma.post.findUnique({
       where: { id: postId }
@@ -39,9 +39,9 @@ export class LikeService {
     // Check if already liked
     const existingLike = await prisma.like.findUnique({
       where: {
-        postId_userEmail: {
-          postId,
-          userEmail
+        userId_postId: {
+          userId,
+          postId
         }
       }
     });
@@ -58,7 +58,7 @@ export class LikeService {
         })
       ]);
 
-      logger.info(`Post unliked: ${postId} by ${userEmail}`);
+      logger.info(`Post unliked: ${postId} by ${userId}`);
       return { liked: false };
     } else {
       // Like (create)
@@ -66,7 +66,7 @@ export class LikeService {
         prisma.like.create({
           data: {
             postId,
-            userEmail
+            userId
           }
         }),
         prisma.post.update({
@@ -75,7 +75,7 @@ export class LikeService {
         })
       ]);
 
-      logger.info(`Post liked: ${postId} by ${userEmail}`);
+      logger.info(`Post liked: ${postId} by ${userId}`);
       return { liked: true };
     }
   }

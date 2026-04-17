@@ -17,6 +17,18 @@ export const PostController = {
       data: result
     });
   }),
+  /**
+   * Get personalized feed
+   * GET /api/v1/posts/feed
+   */
+  getFeed: asyncHandler(async (req, res) => {
+    const filters = postQuerySchema.parse(req.query);
+    const result = await PostService.getFeed(req.user, { page: filters.page, limit: filters.limit });
+    res.json({
+      success: true,
+      data: result
+    });
+  }),
 
   /**
    * Get single post
@@ -95,7 +107,7 @@ export const PostController = {
    * GET /api/v1/likes
    */
   getUserLikes: asyncHandler(async (req, res) => {
-    const likes = await LikeService.getUserLikes(req.user.email);
+    const likes = await LikeService.getUserLikes(req.user.id);
 
     res.json({
       success: true,
@@ -109,7 +121,7 @@ export const PostController = {
    */
   toggleLike: asyncHandler(async (req, res) => {
     const { id: postId } = uuidParamSchema.parse(req.params);
-    const result = await LikeService.toggleLike(postId, req.user.email);
+    const result = await LikeService.toggleLike(postId, req.user.id);
 
     res.json({
       success: true,

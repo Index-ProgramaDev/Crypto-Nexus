@@ -1,64 +1,52 @@
 import React, { useState } from 'react';
-import { base44 } from '@/api/base44Client';
+import { api } from '@/api/apiClient';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '@/lib/AuthContext';
 import PostList from '@/components/feed/PostList';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Crown, Lock, Send, Loader2, TrendingUp, TrendingDown, AlertTriangle, Pause } from 'lucide-react';
+import { Crown, Lock, Send, Loader2, TrendingUp, TrendingDown, AlertTriangle, Pause, BarChart3 } from 'lucide-react';
+import AccessDeniedDialog from '@/components/auth/AccessDeniedDialog';
 
 export default function VipRoom() {
   const { user } = useAuth();
   const queryClient = useQueryClient();
-  const hasAccess = user?.vip_access || user?.role === 'admin';
+  const hasAccess = user?.vipAccess || user?.role === 'admin';
   const isAdmin = user?.role === 'admin';
 
   const [content, setContent] = useState('');
   const [signalType, setSignalType] = useState('buy');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const { data: posts = [], isLoading } = useQuery({
+  const { data: postsData, isLoading } = useQuery({
     queryKey: ['posts', 'vip'],
-    queryFn: () => base44.entities.Post.filter({ access_level: 'vip', status: 'active' }, '-created_date', 50),
+    queryFn: () => api.getPosts({ accessLevel: 'vip', status: 'active' }),
     enabled: hasAccess,
   });
 
-  const { data: userLikes = [] } = useQuery({
-    queryKey: ['likes', user?.email],
-    queryFn: () => base44.entities.Like.filter({ user_email: user?.email }),
-    enabled: !!user?.email,
+  const posts = postsData?.data?.posts || [];
+
+  const { data: likesData } = useQuery({
+    queryKey: ['likes', user?.id],
+    queryFn: () => api.getUserLikes(),
+    enabled: !!user?.id,
   });
 
+  const userLikes = likesData?.data?.likes || [];
+
   if (!hasAccess) {
-    return (
-      <div className="flex flex-col items-center justify-center min-h-[60vh] text-center px-4">
-        <div className="w-20 h-20 rounded-2xl bg-neon-purple/10 flex items-center justify-center mb-4 animate-glow">
-          <Crown className="w-10 h-10 text-neon-purple" />
-        </div>
-        <h2 className="text-xl font-bold mb-2">Sala VIP</h2>
-        <p className="text-muted-foreground text-sm max-w-md">
-          Acesso exclusivo com sinais de operações cripto em tempo real. Liberação manual pelos administradores.
-        </p>
-        <Lock className="w-5 h-5 text-muted-foreground mt-4" />
-      </div>
-    );
+    return <AccessDeniedDialog area="vip" onClose={() => window.history.back()} />;
   }
 
   const handleSignalPost = async () => {
     if (!content.trim()) return;
     setIsSubmitting(true);
-    await base44.entities.Post.create({
+    await api.createPost({
       content: content.trim(),
-      author_name: user.full_name,
-      author_email: user.email,
-      author_avatar: user.avatar_url,
-      access_level: 'vip',
-      is_signal: true,
-      signal_type: signalType,
-      likes_count: 0,
-      comments_count: 0,
-      status: 'active',
+      accessLevel: 'vip',
+      isSignal: true,
+      signalType: signalType,
     });
     setContent('');
     setIsSubmitting(false);
@@ -85,17 +73,31 @@ export default function VipRoom() {
       {isAdmin && (
         <div className="bg-card rounded-xl border border-neon-purple/20 p-4 space-y-3">
           <div className="flex items-center gap-3">
-            <Select value={signalType} onValueChange={setSignalType}>
-              <SelectTrigger className="w-32">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="buy"><span className="flex items-center gap-2"><TrendingUp className="w-3 h-3 text-primary" /> Compra</span></SelectItem>
-                <SelectItem value="sell"><span className="flex items-center gap-2"><TrendingDown className="w-3 h-3 text-destructive" /> Venda</span></SelectItem>
-                <SelectItem value="hold"><span className="flex items-center gap-2"><Pause className="w-3 h-3 text-neon-blue" /> Hold</span></SelectItem>
-                <SelectItem value="alert"><span className="flex items-center gap-2"><AlertTriangle className="w-3 h-3 text-neon-purple" /> Alerta</span></SelectItem>
-              </SelectContent>
-            </Select>
+            <div className="flex flex-wrap gap-2">
+              {[
+                { value: 'buy', icon: TrendingUp, label: 'Compra', color: 'text-primary', bg: 'bg-primary/10 border-primary/20' },
+                { value: 'sell', icon: TrendingDown, label: 'Venda', color: 'text-destructive', bg: 'bg-destructive/10 border-destructive/20' },
+                { value: 'hold', icon: Pause, label: 'Hold', color: 'text-neon-blue', bg: 'bg-neon-blue/10 border-neon-blue/20' },
+                { value: 'alert', icon: AlertTriangle, label: 'Alerta', color: 'text-neon-purple', bg: 'bg-neon-purple/10 border-neon-purple/20' },
+              ].map((signal) => {
+                const Icon = signal.icon;
+                const isSelected = signalType === signal.value;
+                return (
+                  <button
+                    key={signal.value}
+                    onClick={() => setSignalType(signal.value)}
+                    className={`flex items-center gap-1.5 px-3 py-2 rounded-lg border text-sm font-medium transition-all ${
+                      isSelected
+                        ? `${signal.bg} ${signal.color} ring-2 ring-offset-1 ring-offset-background`
+                        : 'bg-secondary/50 text-muted-foreground border-border hover:bg-secondary'
+                    }`}
+                  >
+                    <Icon className={`w-4 h-4 ${signal.color}`} />
+                    {signal.label}
+                  </button>
+                );
+              })}
+            </div>
           </div>
           <Textarea
             placeholder="Descreva o sinal de operação..."

@@ -10,14 +10,34 @@ export class CommentService {
    */
   static async getCommentsByPost(postId) {
     const comments = await prisma.comment.findMany({
-      where: { 
+      where: {
         postId,
         status: 'active'
       },
-      orderBy: { createdAt: 'desc' }
+      orderBy: { createdAt: 'desc' },
+      include: {
+        author: {
+          select: {
+            id: true,
+            username: true,
+            profile: {
+              select: {
+                fullName: true,
+                avatarUrl: true
+              }
+            }
+          }
+        }
+      }
     });
 
-    return comments;
+    // Transform to include authorName and authorAvatar for frontend compatibility
+    return comments.map(comment => ({
+      ...comment,
+      authorName: comment.author?.profile?.fullName || comment.author?.username || 'Usuário',
+      authorAvatar: comment.author?.profile?.avatarUrl,
+      authorId: comment.author?.id
+    }));
   }
 
   /**
@@ -74,9 +94,7 @@ export class CommentService {
         data: {
           postId,
           parentCommentId,
-          authorEmail: user.email,
-          authorName: user.fullName,
-          authorAvatar: user.avatarUrl,
+          userId: user.id,
           content,
           status: 'active'
         }
@@ -108,7 +126,7 @@ export class CommentService {
     }
 
     // Check ownership
-    if (comment.authorEmail !== user.email) {
+    if (comment.userId !== user.id) {
       throw Object.assign(new Error('Not authorized to update this comment'), { statusCode: 403 });
     }
 
@@ -147,7 +165,7 @@ export class CommentService {
     }
 
     // Check ownership or admin
-    if (comment.authorEmail !== user.email && user.role !== 'admin') {
+    if (comment.userId !== user.id && user.role !== 'admin') {
       throw Object.assign(new Error('Not authorized to delete this comment'), { statusCode: 403 });
     }
 

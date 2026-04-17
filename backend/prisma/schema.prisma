@@ -7,40 +7,12 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-// Enums
+// Enums matching Neon DB
 enum UserRole {
   user
   mentored
   advanced
   admin
-}
-
-enum AccessLevel {
-  public
-  mentored
-  advanced
-  vip
-}
-
-enum SignalType {
-  buy
-  sell
-  hold
-  alert
-}
-
-enum AlertType {
-  info
-  warning
-  urgent
-  signal
-}
-
-enum ModerationAction {
-  warning
-  message_sent
-  blocked_30_days
-  permanent_ban
 }
 
 enum ContentStatus {
@@ -49,149 +21,319 @@ enum ContentStatus {
   suspended
 }
 
-// Models
+enum NotificationType {
+  like
+  comment
+  follow
+  mention
+  message
+  alert
+}
+
+enum MessageStatus {
+  sent
+  delivered
+  read
+}
+
+// ==========================================
+// CORE MODELS
+// ==========================================
+
 model User {
   id              String    @id @default(uuid())
   email           String    @unique
-  fullName        String    @map("full_name")
-  passwordHash    String?   @map("password_hash")
+  username        String    @unique
+  passwordHash    String    @map("password_hash")
   role            UserRole  @default(user)
-  vipAccess       Boolean   @default(false) @map("vip_access")
-  bio             String?
-  phone           String?
-  avatarUrl       String?   @map("avatar_url")
-  violationCount  Int       @default(0) @map("violation_count")
   isBlocked       Boolean   @default(false) @map("is_blocked")
   blockedUntil    DateTime? @map("blocked_until")
+  emailVerified   Boolean   @default(false) @map("email_verified")
+  vipAccess       Boolean   @default(false) @map("vip_access")
+  violationCount  Int       @default(0) @map("violation_count")
   createdAt       DateTime  @default(now()) @map("created_at")
   updatedAt       DateTime  @updatedAt @map("updated_at")
 
   // Relations
+  profile         Profile?
+  moderationLogs  ModerationLog[]
+  sessions        Session[]
   posts           Post[]
   comments        Comment[]
   likes           Like[]
-  moderationLogs  ModerationLog[]
-  sessions        Session[]
+  followers       Follow[]  @relation("UserFollowers")
+  following       Follow[]  @relation("UserFollowing")
+  notifications   Notification[]
+  sentMessages    Message[] @relation("MessageSender")
+  conversationParticipants ConversationParticipant[]
+  adminConversations Conversation[] @relation("ConversationAdmin")
 
+  @@index([email])
+  @@index([username])
+  @@index([createdAt])
   @@map("users")
 }
 
-model Post {
-  id              String       @id @default(uuid())
-  content         String?
-  imageUrl        String?      @map("image_url")
-  authorEmail     String       @map("author_email")
-  authorName      String       @map("author_name")
-  authorAvatar    String?      @map("author_avatar")
-  accessLevel     AccessLevel  @default(public) @map("access_level")
-  status          ContentStatus @default(active)
-  isSignal        Boolean      @default(false) @map("is_signal")
-  signalType      SignalType?  @map("signal_type")
-  isPinned        Boolean      @default(false) @map("is_pinned")
-  likesCount      Int          @default(0) @map("likes_count")
-  commentsCount   Int          @default(0) @map("comments_count")
-  createdAt       DateTime     @default(now()) @map("created_at")
-  updatedAt       DateTime     @updatedAt @map("updated_at")
+model Profile {
+  id              String    @id @default(uuid())
+  userId          String    @unique @map("user_id")
+  fullName        String?   @map("full_name")
+  bio             String?
+  avatarUrl       String?   @map("avatar_url")
+  location        String?
+  website         String?
+  birthDate       DateTime? @map("birth_date")
+  isPrivate       Boolean   @default(false) @map("is_private")
+  followersCount  Int       @default(0) @map("followers_count")
+  followingCount  Int       @default(0) @map("following_count")
+  postsCount      Int       @default(0) @map("posts_count")
+  createdAt       DateTime  @default(now()) @map("created_at")
+  updatedAt       DateTime  @updatedAt @map("updated_at")
 
   // Relations
-  author          User         @relation(fields: [authorEmail], references: [email], onDelete: Cascade)
-  comments        Comment[]
-  likes           Like[]
+  user            User      @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  @@index([accessLevel, status])
-  @@index([authorEmail])
-  @@index([createdAt])
-  @@index([isPinned])
-  @@index([isSignal])
-  @@map("posts")
-}
-
-model Comment {
-  id                String        @id @default(uuid())
-  postId            String        @map("post_id")
-  parentCommentId   String?       @map("parent_comment_id")
-  authorEmail       String        @map("author_email")
-  authorName        String        @map("author_name")
-  authorAvatar      String?       @map("author_avatar")
-  content           String
-  status            ContentStatus @default(active)
-  createdAt         DateTime      @default(now()) @map("created_at")
-  updatedAt         DateTime      @updatedAt @map("updated_at")
-
-  // Relations
-  post              Post          @relation(fields: [postId], references: [id], onDelete: Cascade)
-  parent            Comment?      @relation("CommentReplies", fields: [parentCommentId], references: [id], onDelete: Cascade)
-  replies           Comment[]     @relation("CommentReplies")
-  author            User          @relation(fields: [authorEmail], references: [email], onDelete: Cascade)
-
-  @@index([postId, status])
-  @@index([parentCommentId])
-  @@index([authorEmail])
-  @@map("comments")
-}
-
-model Like {
-  id          String    @id @default(uuid())
-  postId      String    @map("post_id")
-  userEmail   String    @map("user_email")
-  createdAt   DateTime  @default(now()) @map("created_at")
-
-  // Relations
-  post        Post      @relation(fields: [postId], references: [id], onDelete: Cascade)
-  user        User      @relation(fields: [userEmail], references: [email], onDelete: Cascade)
-
-  @@unique([postId, userEmail])
-  @@index([userEmail])
-  @@index([postId])
-  @@map("likes")
-}
-
-model Alert {
-  id              String      @id @default(uuid())
-  title           String
-  message         String
-  type            AlertType   @default(info)
-  targetLevel     AccessLevel @default(public) @map("target_level")
-  targetEmail     String?     @map("target_email")
-  isRead          Boolean     @default(false) @map("is_read")
-  createdAt       DateTime    @default(now()) @map("created_at")
-
-  @@index([targetLevel])
-  @@index([targetEmail])
-  @@index([createdAt])
-  @@map("alerts")
-}
-
-model ModerationLog {
-  id              String           @id @default(uuid())
-  userEmail       String           @map("user_email")
-  userName        String           @map("user_name")
-  violationType   String           @map("violation_type")
-  contentBlocked  String?          @map("content_blocked")
-  actionTaken     ModerationAction @map("action_taken")
-  attemptNumber   Int              @map("attempt_number")
-  context         String
-  createdAt       DateTime         @default(now()) @map("created_at")
-
-  // Relations
-  user            User             @relation(fields: [userEmail], references: [email], onDelete: Cascade)
-
-  @@index([userEmail])
-  @@index([createdAt])
-  @@map("moderation_logs")
+  @@index([userId])
+  @@map("profiles")
 }
 
 model Session {
   id          String    @id @default(uuid())
   userId      String    @map("user_id")
   token       String    @unique
+  refreshToken String?  @map("refresh_token")
+  ipAddress   String?   @map("ip_address")
+  userAgent   String?   @map("user_agent")
   expiresAt   DateTime  @map("expires_at")
   createdAt   DateTime  @default(now()) @map("created_at")
+  lastUsedAt  DateTime  @default(now()) @map("last_used_at")
 
   // Relations
   user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([token])
   @@index([userId])
+  @@index([expiresAt])
   @@map("sessions")
+}
+
+// ==========================================
+// CONTENT MODELS
+// ==========================================
+
+model Post {
+  id              String       @id @default(uuid())
+  userId          String       @map("user_id")
+  content         String?
+  mediaUrls       String[]     @map("media_urls")
+  accessLevel     String       @default("public") @map("access_level") // public, mentored, advanced, vip
+  status          ContentStatus @default(active)
+  isSignal        Boolean      @default(false) @map("is_signal")
+  signalType      String?      @map("signal_type")
+  isPinned        Boolean      @default(false) @map("is_pinned")
+  likesCount      Int          @default(0) @map("likes_count")
+  commentsCount   Int          @default(0) @map("comments_count")
+  sharesCount     Int          @default(0) @map("shares_count")
+  createdAt       DateTime     @default(now()) @map("created_at")
+  updatedAt       DateTime     @updatedAt @map("updated_at")
+
+  // Relations
+  author          User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  comments        Comment[]
+  likes           Like[]
+  notifications   Notification[]
+
+  @@index([userId])
+  @@index([createdAt])
+  @@index([status])
+  @@index([accessLevel])
+  @@index([userId, createdAt])
+  @@index([isPinned])
+  @@map("posts")
+}
+
+model Comment {
+  id                String        @id @default(uuid())
+  postId            String        @map("post_id")
+  userId            String        @map("user_id")
+  parentCommentId   String?       @map("parent_comment_id")
+  content           String
+  status            ContentStatus @default(active)
+  likesCount        Int           @default(0) @map("likes_count")
+  createdAt         DateTime      @default(now()) @map("created_at")
+  updatedAt         DateTime      @updatedAt @map("updated_at")
+
+  // Relations
+  post              Post          @relation(fields: [postId], references: [id], onDelete: Cascade)
+  author            User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  parent            Comment?      @relation("CommentReplies", fields: [parentCommentId], references: [id], onDelete: Cascade)
+  replies           Comment[]     @relation("CommentReplies")
+  likes             Like[]
+  notifications     Notification[]
+
+  @@index([postId])
+  @@index([userId])
+  @@index([parentCommentId])
+  @@index([createdAt])
+  @@map("comments")
+}
+
+model Like {
+  id          String    @id @default(uuid())
+  userId      String    @map("user_id")
+  postId      String?   @map("post_id")
+  commentId   String?   @map("comment_id")
+  createdAt   DateTime  @default(now()) @map("created_at")
+
+  // Relations
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  post        Post?     @relation(fields: [postId], references: [id], onDelete: Cascade)
+  comment     Comment?  @relation(fields: [commentId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, postId])
+  @@unique([userId, commentId])
+  @@index([userId])
+  @@index([postId])
+  @@index([commentId])
+  @@map("likes")
+}
+
+model Follow {
+  id          String    @id @default(uuid())
+  followerId  String    @map("follower_id")
+  followingId String    @map("following_id")
+  createdAt   DateTime  @default(now()) @map("created_at")
+
+  // Relations
+  follower    User      @relation("UserFollowing", fields: [followerId], references: [id], onDelete: Cascade)
+  following   User      @relation("UserFollowers", fields: [followingId], references: [id], onDelete: Cascade)
+
+  @@unique([followerId, followingId])
+  @@index([followerId])
+  @@index([followingId])
+  @@map("follows")
+}
+
+// ==========================================
+// MESSAGING MODELS
+// ==========================================
+
+model Conversation {
+  id          String    @id @default(uuid())
+  isAdminOnly Boolean   @default(false) @map("is_admin_only") // Only admins can initiate
+  adminId     String?   @map("admin_id") // The admin who created the conversation
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+
+  // Relations
+  participants ConversationParticipant[]
+  messages    Message[]
+  admin       User?     @relation("ConversationAdmin", fields: [adminId], references: [id], onDelete: SetNull)
+
+  @@index([adminId])
+  @@map("conversations")
+}
+
+model ConversationParticipant {
+  id              String    @id @default(uuid())
+  conversationId  String    @map("conversation_id")
+  userId          String    @map("user_id")
+  lastReadAt      DateTime? @map("last_read_at")
+  joinedAt        DateTime  @default(now()) @map("joined_at")
+
+  // Relations
+  conversation    Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  user            User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([conversationId, userId])
+  @@index([userId])
+  @@index([conversationId])
+  @@map("conversation_participants")
+}
+
+model Message {
+  id              String        @id @default(uuid())
+  conversationId  String        @map("conversation_id")
+  senderId        String        @map("sender_id")
+  content         String
+  mediaUrls       String[]      @map("media_urls")
+  status          MessageStatus @default(sent)
+  createdAt       DateTime      @default(now()) @map("created_at")
+  updatedAt       DateTime      @updatedAt @map("updated_at")
+
+  // Relations
+  conversation    Conversation  @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  sender          User          @relation("MessageSender", fields: [senderId], references: [id], onDelete: Cascade)
+
+  @@index([conversationId])
+  @@index([senderId])
+  @@index([createdAt])
+  @@map("messages")
+}
+
+// ==========================================
+// ALERT MODELS (for admin announcements)
+// ==========================================
+
+model Alert {
+  id          String       @id @default(uuid())
+  title       String
+  message     String
+  type        String       @default("info") // info, warning, urgent, signal
+  targetLevel String       @default("public") @map("target_level") // public, mentored, advanced, vip
+  targetEmail String?      @map("target_email")
+  isRead      Boolean      @default(false) @map("is_read")
+  createdAt   DateTime     @default(now()) @map("created_at")
+  updatedAt   DateTime     @updatedAt @map("updated_at")
+
+  @@index([targetEmail])
+  @@index([targetLevel])
+  @@index([isRead])
+  @@index([createdAt])
+  @@map("alerts")
+}
+
+// ==========================================
+// NOTIFICATION MODELS (user notifications)
+// ==========================================
+
+model Notification {
+  id          String            @id @default(uuid())
+  userId      String            @map("user_id")
+  actorId     String?           @map("actor_id")
+  type        NotificationType
+  postId      String?           @map("post_id")
+  commentId   String?           @map("comment_id")
+  content     String?           @map("content")
+  isRead      Boolean           @default(false) @map("is_read")
+  createdAt   DateTime          @default(now()) @map("created_at")
+
+  // Relations
+  user        User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  post        Post?             @relation(fields: [postId], references: [id], onDelete: Cascade)
+  comment     Comment?          @relation(fields: [commentId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([userId, isRead])
+  @@index([createdAt])
+  @@map("notifications")
+}
+
+// ==========================================
+// MODERATION LOG MODELS
+// ==========================================
+
+model ModerationLog {
+  id          String   @id @default(uuid())
+  userId      String   @map("user_id")
+  targetId    String?  @map("target_id")
+  action      String
+  reason      String?
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([createdAt])
+  @@map("moderation_logs")
 }

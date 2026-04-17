@@ -16,7 +16,7 @@ export class UserService {
     if (search) {
       where.OR = [
         { email: { contains: search, mode: 'insensitive' } },
-        { fullName: { contains: search, mode: 'insensitive' } }
+        { profile: { fullName: { contains: search, mode: 'insensitive' } } }
       ];
     }
 
@@ -32,16 +32,19 @@ export class UserService {
         select: {
           id: true,
           email: true,
-          fullName: true,
           role: true,
           vipAccess: true,
-          bio: true,
-          phone: true,
-          avatarUrl: true,
           violationCount: true,
           isBlocked: true,
           blockedUntil: true,
-          createdAt: true
+          createdAt: true,
+          profile: {
+            select: {
+              fullName: true,
+              bio: true,
+              avatarUrl: true
+            }
+          }
         },
         orderBy: { createdAt: 'desc' },
         skip,
@@ -73,16 +76,19 @@ export class UserService {
       select: {
         id: true,
         email: true,
-        fullName: true,
         role: true,
         vipAccess: true,
-        bio: true,
-        phone: true,
-        avatarUrl: true,
         violationCount: true,
         isBlocked: true,
         blockedUntil: true,
         createdAt: true,
+        profile: {
+          select: {
+            fullName: true,
+            bio: true,
+            avatarUrl: true
+          }
+        },
         _count: {
           select: {
             posts: true,
@@ -125,18 +131,24 @@ export class UserService {
       select: {
         id: true,
         email: true,
-        fullName: true,
         role: true,
         vipAccess: true,
-        bio: true,
-        phone: true,
-        avatarUrl: true,
         violationCount: true,
         isBlocked: true,
         blockedUntil: true,
-        createdAt: true
+        createdAt: true,
+        profile: {
+          select: {
+            fullName: true,
+            bio: true,
+            avatarUrl: true
+          }
+        }
       }
     });
+
+    // Update profile data if passed? Actually updateUser in admin just modifies user roots natively,
+    // but the prompt doesn't strictly say admin updates Profile. Admin usually blocks/alters score.
 
     logger.info(`User updated by admin: ${updated.email}`);
     return updated;
@@ -171,17 +183,20 @@ export class UserService {
       data: {
         email,
         passwordHash,
-        fullName,
+        username: email.split('@')[0] + Math.floor(Math.random()*100),
         role,
-        vipAccess: role === 'admin' ? false : undefined
+        vipAccess: role === 'admin' ? false : undefined,
+        profile: {
+          create: { fullName }
+        }
       },
       select: {
         id: true,
         email: true,
-        fullName: true,
         role: true,
         vipAccess: true,
-        createdAt: true
+        createdAt: true,
+        profile: { select: { fullName: true } }
       }
     });
 

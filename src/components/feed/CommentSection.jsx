@@ -13,6 +13,7 @@ import { ptBR } from 'date-fns/locale';
 export default function CommentSection({ post, user, onRefresh }) {
   const [newComment, setNewComment] = useState('');
   const [replyTo, setReplyTo] = useState(null);
+  const [optimisticComments, setOptimisticComments] = useState([]);
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const isAdmin = user?.role === 'admin';
@@ -22,7 +23,8 @@ export default function CommentSection({ post, user, onRefresh }) {
     queryFn: () => api.getComments(post.id),
   });
 
-  const comments = commentsData?.data?.comments || [];
+  const serverComments = commentsData?.data?.comments || [];
+  const comments = [...optimisticComments, ...serverComments];
   const topComments = comments.filter(c => !c.parentCommentId);
   const replies = comments.filter(c => c.parentCommentId);
 
@@ -38,17 +40,35 @@ export default function CommentSection({ post, user, onRefresh }) {
       }
     }
 
+    const tempId = 'temp-' + Date.now();
+    const optimisticComment = {
+      id: tempId,
+      content: newComment.trim(),
+      parentCommentId: replyTo,
+      authorName: user?.fullName || user?.username || 'Você',
+      authorAvatar: user?.avatarUrl,
+      createdAt: new Date().toISOString(),
+      isOptimistic: true
+    };
+
+    // Add optimistic comment immediately
+    setOptimisticComments(prev => [...prev, optimisticComment]);
+    setNewComment('');
+    setReplyTo(null);
+
     try {
       await api.createComment(post.id, {
-        content: newComment.trim(),
-        parentCommentId: replyTo
+        content: optimisticComment.content,
+        parentCommentId: optimisticComment.parentCommentId
       });
 
-      setNewComment('');
-      setReplyTo(null);
+      // Clear optimistic comments and refresh real data
+      setOptimisticComments([]);
       queryClient.invalidateQueries({ queryKey: ['comments', post.id] });
       onRefresh?.();
     } catch (error) {
+      // Remove optimistic comment on error
+      setOptimisticComments(prev => prev.filter(c => c.id !== tempId));
       toast({ title: 'Erro', description: error.message, variant: 'destructive' });
     }
   };
@@ -63,10 +83,10 @@ export default function CommentSection({ post, user, onRefresh }) {
         <div className="space-y-3 max-h-64 overflow-y-auto">
           {topComments.map(comment => (
             <div key={comment.id}>
-              <CommentItem comment={comment} onReply={() => { setReplyTo(comment.id); }} />
-              {replies.filter(r => r.parent_comment_id === comment.id).map(reply => (
+              <CommentItem comment={comment} isReply={false} onReply={() => { setReplyTo(comment.id); }} />
+              {replies.filter(r => r.parentCommentId === comment.id).map(reply => (
                 <div key={reply.id} className="ml-10 mt-2">
-                  <CommentItem comment={reply} isReply />
+                  <CommentItem comment={reply} isReply={true} onReply={null} />
                 </div>
               ))}
             </div>

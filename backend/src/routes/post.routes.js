@@ -8,6 +8,7 @@ const router = Router();
 
 // Public routes (with optional auth)
 router.get('/', optionalAuth, PostController.getPosts);
+router.get('/feed', authenticate, PostController.getFeed);
 router.get('/:id', optionalAuth, PostController.getPost);
 
 // Protected routes
