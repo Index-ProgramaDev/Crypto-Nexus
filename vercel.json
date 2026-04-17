@@ -1,6 +1,5 @@
 {
   "version": 2,
-  "root": true,
   "builds": [
     {
       "src": "package.json",
@@ -11,14 +10,7 @@
     },
     {
       "src": "backend/src/server.js",
-      "use": "@vercel/node",
-      "config": {
-        "includeFiles": [
-          "backend/src/**",
-          "backend/prisma/**",
-          "backend/package.json"
-        ]
-      }
+      "use": "@vercel/node"
     }
   ],
   "routes": [
@@ -30,14 +22,5 @@
       "src": "/(.*)",
       "dest": "/dist/$1"
     }
-  ],
-  "env": {
-    "NODE_ENV": "production",
-    "VERCEL": "1"
-  },
-  "functions": {
-    "backend/src/server.js": {
-      "maxDuration": 30
-    }
-  }
+  ]
 }
