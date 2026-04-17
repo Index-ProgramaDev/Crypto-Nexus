@@ -10,7 +10,7 @@
       }
     },
     {
-      "src": "backend/package.json",
+      "src": "backend/src/server.js",
       "use": "@vercel/node",
       "config": {
         "includeFiles": [
